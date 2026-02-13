@@ -635,6 +635,9 @@ int editor_design(bool isCreationMode)
 
     glblmode = isCreationMode;
 
+    // Clear keyboard buffer to prevent key bleed from character select
+    kb_clear();
+
     SavePlayer();
 
     if (CharEditStart() == -1) {
@@ -735,6 +738,47 @@ int editor_design(bool isCreationMode)
             SexWindow();
         } else if (glblmode && (keyCode >= 503 && keyCode < 517)) {
             StatButton(keyCode);
+        // AI keyboard shortcuts: F1-F7 = increment stats, Shift+F1-F7 = decrement
+        // Uses cooldown to prevent key repeat from firing multiple times
+        // AI: direct stat change (no StatButton loop which has internal hold repeat)
+        } else if (glblmode && keyCode >= KEY_F1 && keyCode <= KEY_F7) {
+            {
+                static unsigned int lastStatTime = 0;
+                unsigned int now = get_time();
+                if (now - lastStatTime > 500) {
+                    lastStatTime = now;
+                    int si = keyCode - KEY_F1;
+                    int prev = stat_level(obj_dude, si);
+                    if (character_points > 0 && prev < 10 && inc_stat(obj_dude, si) == 0) {
+                        character_points--;
+                        PrintBasicStat(si, 0, prev);
+                        PrintBigNum(126, 282, 0, character_points, character_points + 1, edit_win);
+                        stat_recalc_derived(obj_dude); ListDrvdStats(); ListSkills(0);
+                        win_draw(edit_win); renderPresent();
+                    }
+                    FILE* df = fopen("/tmp/fallout_stats.txt", "w");
+                    if (df) { fprintf(df, "ST=%d PE=%d EN=%d CH=%d IN=%d AG=%d LK=%d PTS=%d\n", stat_level(obj_dude,STAT_STRENGTH), stat_level(obj_dude,STAT_PERCEPTION), stat_level(obj_dude,STAT_ENDURANCE), stat_level(obj_dude,STAT_CHARISMA), stat_level(obj_dude,STAT_INTELLIGENCE), stat_level(obj_dude,STAT_AGILITY), stat_level(obj_dude,STAT_LUCK), character_points); fclose(df); }
+                }
+            }
+        } else if (glblmode && keyCode >= KEY_SHIFT_F1 && keyCode <= KEY_SHIFT_F7) {
+            {
+                static unsigned int lastStatTime2 = 0;
+                unsigned int now = get_time();
+                if (now - lastStatTime2 > 500) {
+                    lastStatTime2 = now;
+                    int si = keyCode - KEY_SHIFT_F1;
+                    int prev = stat_level(obj_dude, si);
+                    if (dec_stat(obj_dude, si) == 0) {
+                        character_points++;
+                        PrintBasicStat(si, 0, prev);
+                        PrintBigNum(126, 282, 0, character_points, character_points - 1, edit_win);
+                        stat_recalc_derived(obj_dude); ListDrvdStats(); ListSkills(0);
+                        win_draw(edit_win); renderPresent();
+                    }
+                    FILE* df = fopen("/tmp/fallout_stats.txt", "w");
+                    if (df) { fprintf(df, "ST=%d PE=%d EN=%d CH=%d IN=%d AG=%d LK=%d PTS=%d\n", stat_level(obj_dude,STAT_STRENGTH), stat_level(obj_dude,STAT_PERCEPTION), stat_level(obj_dude,STAT_ENDURANCE), stat_level(obj_dude,STAT_CHARISMA), stat_level(obj_dude,STAT_INTELLIGENCE), stat_level(obj_dude,STAT_AGILITY), stat_level(obj_dude,STAT_LUCK), character_points); fclose(df); }
+                }
+            }
         } else if ((glblmode && (keyCode == 501 || keyCode == KEY_UPPERCASE_O || keyCode == KEY_LOWERCASE_O))
             || (!glblmode && (keyCode == 501 || keyCode == KEY_UPPERCASE_P || keyCode == KEY_LOWERCASE_P))) {
             OptionWindow();
@@ -755,8 +799,25 @@ int editor_design(bool isCreationMode)
             TagSkillSelect(keyCode - 536);
         } else if (glblmode == 1 && keyCode >= 555 && keyCode < 571) {
             TraitSelect(keyCode - 555);
-        } else if (keyCode == 390) {
-            dump_screen();
+        // AI: F8=tag Small Guns(0), F9=tag Lockpick(9), F11=tag Speech(14), F12=select Gifted trait(15)
+        } else if (glblmode == 1 && keyCode == KEY_F8) {
+            TagSkillSelect(0); // Small Guns
+            win_draw(edit_win); renderPresent();
+        } else if (glblmode == 1 && keyCode == KEY_F9) {
+            TagSkillSelect(9); // Lockpick
+            win_draw(edit_win); renderPresent();
+        } else if (glblmode == 1 && keyCode == KEY_F11) {
+            TagSkillSelect(14); // Speech
+            win_draw(edit_win); renderPresent();
+        } else if (glblmode == 1 && keyCode == KEY_F12) {
+            TraitSelect(15); // Gifted
+            win_draw(edit_win); renderPresent();
+        } else if (keyCode == 99999) { // dead code placeholder
+            FILE* df = fopen("/tmp/fallout_stats.txt", "w");
+            if (df) {
+                fprintf(df, "PLACEHOLDER\n");
+                fclose(df);
+            }
         }
 
         win_draw(edit_win);

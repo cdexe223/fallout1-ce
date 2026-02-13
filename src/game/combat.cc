@@ -2173,12 +2173,8 @@ static int combat_input()
             break;
         }
 
-        if (input == KEY_RETURN) {
-            combat_end();
-        } else {
-            scripts_check_state_in_combat();
-            game_handle_input(input, true);
-        }
+        scripts_check_state_in_combat();
+        game_handle_input(input, true);
 
         renderPresent();
         sharedFpsLimiter.throttle();

@@ -215,6 +215,8 @@ static void display_table_inventories(int win, Object* a2, Object* a3, int a4);
 static int do_move_timer(int inventoryWindowType, Object* item, int a3);
 static int setup_move_timer_win(int inventoryWindowType, Object* item);
 static int exit_move_timer_win(int inventoryWindowType);
+static int inven_key_to_slot_index(int keyCode);
+static void inven_toggle_mode_keyboard();
 
 // The number of items to show in scroller.
 //
@@ -384,6 +386,41 @@ static int inventry_msg_unload()
     return 0;
 }
 
+static int inven_key_to_slot_index(int keyCode)
+{
+    switch (keyCode) {
+    case KEY_1:
+        return 0;
+    case KEY_2:
+        return 1;
+    case KEY_3:
+        return 2;
+    case KEY_4:
+        return 3;
+    case KEY_5:
+        return 4;
+    case KEY_6:
+        return 5;
+    case KEY_7:
+        return 6;
+    case KEY_8:
+        return 7;
+    case KEY_9:
+        return 8;
+    default:
+        return -1;
+    }
+}
+
+static void inven_toggle_mode_keyboard()
+{
+    if (immode == INVENTORY_WINDOW_CURSOR_HAND) {
+        inven_set_mouse(INVENTORY_WINDOW_CURSOR_ARROW);
+    } else if (immode == INVENTORY_WINDOW_CURSOR_ARROW) {
+        inven_set_mouse(INVENTORY_WINDOW_CURSOR_HAND);
+    }
+}
+
 // 0x462480
 void handle_inventory()
 {
@@ -447,6 +484,12 @@ void handle_inventory()
 
         if (keyCode == KEY_CTRL_Q || keyCode == KEY_CTRL_X) {
             game_quit_with_confirm();
+        } else if (keyCode == KEY_TAB) {
+            inven_toggle_mode_keyboard();
+            if (immode == INVENTORY_WINDOW_CURSOR_HAND) {
+                display_stats();
+                win_draw(i_wid);
+            }
         } else if (keyCode == KEY_ARROW_UP) {
             if (stack_offset[curr_stack] > 0) {
                 stack_offset[curr_stack] -= 1;
@@ -460,7 +503,17 @@ void handle_inventory()
         } else if (keyCode == 2500) {
             container_exit(keyCode, INVENTORY_WINDOW_TYPE_NORMAL);
         } else {
-            if ((mouse_get_buttons() & MOUSE_EVENT_RIGHT_BUTTON_DOWN) != 0) {
+            int slotIndex = inven_key_to_slot_index(keyCode);
+            if (slotIndex != -1) {
+                int buttonCode = 1000 + slotIndex;
+                if (buttonCode <= 1008) {
+                    if (immode == INVENTORY_WINDOW_CURSOR_ARROW) {
+                        inven_action_cursor(buttonCode, INVENTORY_WINDOW_TYPE_NORMAL);
+                    } else {
+                        inven_pickup(buttonCode, stack_offset[curr_stack]);
+                    }
+                }
+            } else if ((mouse_get_buttons() & MOUSE_EVENT_RIGHT_BUTTON_DOWN) != 0) {
                 if (immode == INVENTORY_WINDOW_CURSOR_HAND) {
                     inven_set_mouse(INVENTORY_WINDOW_CURSOR_ARROW);
                 } else if (immode == INVENTORY_WINDOW_CURSOR_ARROW) {
@@ -2299,6 +2352,9 @@ void use_inventory_on(Object* a1)
 
         int keyCode = get_input();
         switch (keyCode) {
+        case KEY_TAB:
+            inven_toggle_mode_keyboard();
+            break;
         case KEY_HOME:
             stack_offset[curr_stack] = 0;
             display_inventory(0, -1, INVENTORY_WINDOW_TYPE_USE_ITEM_ON);
@@ -2343,7 +2399,22 @@ void use_inventory_on(Object* a1)
             container_exit(keyCode, INVENTORY_WINDOW_TYPE_USE_ITEM_ON);
             break;
         default:
-            if ((mouse_get_buttons() & MOUSE_EVENT_RIGHT_BUTTON_DOWN) != 0) {
+            int slotIndex = inven_key_to_slot_index(keyCode);
+            if (slotIndex != -1 && slotIndex < inven_cur_disp) {
+                int buttonCode = 1000 + slotIndex;
+                if (immode == INVENTORY_WINDOW_CURSOR_ARROW) {
+                    inven_action_cursor(buttonCode, INVENTORY_WINDOW_TYPE_USE_ITEM_ON);
+                } else {
+                    int inventoryItemIndex = stack_offset[curr_stack] + slotIndex;
+                    if (inventoryItemIndex < pud->length) {
+                        InventoryItem* inventoryItem = &(pud->items[inventoryItemIndex]);
+                        action_use_an_item_on_object(stack[0], a1, inventoryItem->item);
+                        keyCode = KEY_ESCAPE;
+                    } else {
+                        keyCode = -1;
+                    }
+                }
+            } else if ((mouse_get_buttons() & MOUSE_EVENT_RIGHT_BUTTON_DOWN) != 0) {
                 if (immode == INVENTORY_WINDOW_CURSOR_HAND) {
                     inven_set_mouse(INVENTORY_WINDOW_CURSOR_ARROW);
                 } else {
@@ -3831,6 +3902,8 @@ int loot_container(Object* a1, Object* a2)
                     }
                 }
             }
+        } else if (keyCode == KEY_TAB) {
+            inven_toggle_mode_keyboard();
         } else if (keyCode == KEY_ARROW_UP) {
             if (stack_offset[curr_stack] > 0) {
                 stack_offset[curr_stack] -= 1;
@@ -3890,13 +3963,24 @@ int loot_container(Object* a1, Object* a2)
         } else if (keyCode >= 2500 && keyCode <= 2501) {
             container_exit(keyCode, INVENTORY_WINDOW_TYPE_LOOT);
         } else {
+            bool activateByKeyboard = false;
+            int slotIndex = inven_key_to_slot_index(keyCode);
+            if (slotIndex != -1 && slotIndex < inven_cur_disp) {
+                if (keys[SDL_SCANCODE_LCTRL] || keys[SDL_SCANCODE_RCTRL]) {
+                    keyCode = 1000 + slotIndex;
+                } else {
+                    keyCode = 2000 + slotIndex;
+                }
+                activateByKeyboard = true;
+            }
+
             if ((mouse_get_buttons() & MOUSE_EVENT_RIGHT_BUTTON_DOWN) != 0) {
                 if (immode == INVENTORY_WINDOW_CURSOR_HAND) {
                     inven_set_mouse(INVENTORY_WINDOW_CURSOR_ARROW);
                 } else {
                     inven_set_mouse(INVENTORY_WINDOW_CURSOR_HAND);
                 }
-            } else if ((mouse_get_buttons() & MOUSE_EVENT_LEFT_BUTTON_DOWN) != 0) {
+            } else if (activateByKeyboard || (mouse_get_buttons() & MOUSE_EVENT_LEFT_BUTTON_DOWN) != 0) {
                 if (keyCode >= 1000 && keyCode <= 1000 + inven_cur_disp) {
                     if (immode == INVENTORY_WINDOW_CURSOR_ARROW) {
                         inven_action_cursor(keyCode, INVENTORY_WINDOW_TYPE_LOOT);
@@ -4656,6 +4740,8 @@ void barter_inventory(int win, Object* a2, Object* a3, Object* a4, int a5)
             item_move_all(a3, obj_dude);
             barter_end_to_talk_to();
             break;
+        } else if (keyCode == KEY_TAB) {
+            inven_toggle_mode_keyboard();
         } else if (keyCode == KEY_LOWERCASE_M) {
             if (a3->data.inventory.length != 0 || btable->data.inventory.length != 0) {
                 MessageListItem messageListItem;
@@ -4720,13 +4806,24 @@ void barter_inventory(int win, Object* a2, Object* a3, Object* a4, int a5)
         } else if (keyCode >= 2500 && keyCode <= 2501) {
             container_exit(keyCode, INVENTORY_WINDOW_TYPE_TRADE);
         } else {
+            bool activateByKeyboard = false;
+            int slotIndex = inven_key_to_slot_index(keyCode);
+            if (slotIndex != -1 && slotIndex < inven_cur_disp) {
+                if (keys[SDL_SCANCODE_LCTRL] || keys[SDL_SCANCODE_RCTRL]) {
+                    keyCode = 2000 + slotIndex;
+                } else {
+                    keyCode = 1000 + slotIndex;
+                }
+                activateByKeyboard = true;
+            }
+
             if ((mouse_get_buttons() & MOUSE_EVENT_RIGHT_BUTTON_DOWN) != 0) {
                 if (immode == INVENTORY_WINDOW_CURSOR_HAND) {
                     inven_set_mouse(INVENTORY_WINDOW_CURSOR_ARROW);
                 } else {
                     inven_set_mouse(INVENTORY_WINDOW_CURSOR_HAND);
                 }
-            } else if ((mouse_get_buttons() & MOUSE_EVENT_LEFT_BUTTON_DOWN) != 0) {
+            } else if (activateByKeyboard || (mouse_get_buttons() & MOUSE_EVENT_LEFT_BUTTON_DOWN) != 0) {
                 if (keyCode >= 1000 && keyCode <= 1000 + inven_cur_disp) {
                     if (immode == INVENTORY_WINDOW_CURSOR_ARROW) {
                         inven_action_cursor(keyCode, INVENTORY_WINDOW_TYPE_TRADE);

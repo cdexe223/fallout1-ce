@@ -1371,9 +1371,25 @@ static int gDialogProcess()
                 gDialogProcessHighlight(keyCode - 1200);
             } else if (keyCode >= 1300 && keyCode <= 1330) {
                 gDialogProcessUnHighlight(keyCode - 1300);
-            } else if (keyCode >= 48 && keyCode <= 57) {
-                int option = keyCode - 49;
-                if (option < gdNumOptions) {
+            } else {
+                int option = -1;
+                if (keyCode >= KEY_1 && keyCode <= KEY_9) {
+                    option = keyCode - KEY_1;
+                } else if (keyCode == KEY_END && keys[SDL_SCANCODE_KP_1]) {
+                    option = 0;
+                } else if (keyCode == KEY_ARROW_DOWN && keys[SDL_SCANCODE_KP_2]) {
+                    option = 1;
+                } else if (keyCode == KEY_PAGE_DOWN && keys[SDL_SCANCODE_KP_3]) {
+                    option = 2;
+                } else if (keyCode == KEY_HOME && keys[SDL_SCANCODE_KP_7]) {
+                    option = 6;
+                } else if (keyCode == KEY_ARROW_UP && keys[SDL_SCANCODE_KP_8]) {
+                    option = 7;
+                } else if (keyCode == KEY_PAGE_UP && keys[SDL_SCANCODE_KP_9]) {
+                    option = 8;
+                }
+
+                if (option >= 0 && option < gdNumOptions) {
                     pageCount = 0;
                     pageIndex = 0;
                     pageOffsets[0] = 0;

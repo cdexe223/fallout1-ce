@@ -237,8 +237,8 @@ int select_character()
             rc = 3;
             done = true;
             break;
-        case KEY_UPPERCASE_C:
-        case KEY_LOWERCASE_C:
+        case KEY_UPPERCASE_G:
+        case KEY_LOWERCASE_G:
             ResetPlayer();
             if (editor_design(1) == 0) {
                 rc = 2;

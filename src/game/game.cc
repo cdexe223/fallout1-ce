@@ -71,6 +71,10 @@ static void game_unload_info();
 static void game_help();
 static int game_init_databases();
 static void game_splash_screen();
+static bool game_handle_keyboard_hex_movement(int eventCode, bool isInCombatMode);
+static void game_interact_with_nearest_object();
+static void game_cycle_keyboard_combat_target();
+static void game_attack_keyboard_combat_target();
 
 // TODO: Remove.
 // 0x4F190C
@@ -122,6 +126,9 @@ DB_DATABASE* master_db_handle;
 
 // 0x58CC1C
 DB_DATABASE* critter_db_handle;
+
+// Keyboard-selected enemy used for target cycling in combat.
+static Object* game_keyboard_combat_target = NULL;
 
 // 0x43B080
 int game_init(const char* windowTitle, bool isMapper, int font, int flags, int argc, char** argv)
@@ -424,6 +431,272 @@ void game_exit()
     gconfig_exit(true);
 }
 
+static bool game_is_keyboard_combat_target(Object* critter)
+{
+    if (critter == NULL || critter == obj_dude) {
+        return false;
+    }
+
+    if ((critter->flags & OBJECT_HIDDEN) != 0) {
+        return false;
+    }
+
+    if (FID_TYPE(critter->fid) != OBJ_TYPE_CRITTER) {
+        return false;
+    }
+
+    if (critter->elevation != map_elevation) {
+        return false;
+    }
+
+    if ((critter->data.critter.combat.results & DAM_DEAD) != 0) {
+        return false;
+    }
+
+    if (critter->data.critter.combat.team == obj_dude->data.critter.combat.team) {
+        return false;
+    }
+
+    if (!can_see(obj_dude, critter)) {
+        return false;
+    }
+
+    return true;
+}
+
+static Object* game_find_keyboard_combat_target(bool cycle)
+{
+    Object** critters;
+    int crittersLength = obj_create_list(-1, map_elevation, OBJ_TYPE_CRITTER, &critters);
+    if (crittersLength <= 0) {
+        return NULL;
+    }
+
+    int currentIndex = -1;
+    int closestIndex = -1;
+    int closestDistance = 0x7FFFFFFF;
+
+    for (int index = 0; index < crittersLength; index++) {
+        Object* critter = critters[index];
+        if (critter == game_keyboard_combat_target) {
+            currentIndex = index;
+        }
+
+        if (game_is_keyboard_combat_target(critter)) {
+            int distance = obj_dist(obj_dude, critter);
+            if (distance < closestDistance) {
+                closestDistance = distance;
+                closestIndex = index;
+            }
+        }
+    }
+
+    Object* result = NULL;
+    if (cycle) {
+        int startIndex = currentIndex != -1 ? (currentIndex + 1) % crittersLength : 0;
+        for (int offset = 0; offset < crittersLength; offset++) {
+            int index = (startIndex + offset) % crittersLength;
+            if (game_is_keyboard_combat_target(critters[index])) {
+                result = critters[index];
+                break;
+            }
+        }
+    } else {
+        if (currentIndex != -1 && game_is_keyboard_combat_target(critters[currentIndex])) {
+            result = critters[currentIndex];
+        } else if (closestIndex != -1) {
+            result = critters[closestIndex];
+        }
+    }
+
+    obj_delete_list(critters);
+
+    return result;
+}
+
+static void game_focus_keyboard_combat_target(Object* critter)
+{
+    if (critter == NULL) {
+        return;
+    }
+
+    if (register_begin(ANIMATION_REQUEST_RESERVED) == 0) {
+        register_object_turn_towards(obj_dude, critter->tile);
+        register_end();
+    }
+
+    char message[128];
+    int accuracy;
+    char* name = object_name(critter);
+    if (combat_to_hit(critter, &accuracy)) {
+        snprintf(message, sizeof(message), "Target: %s (%d%%)", name != NULL ? name : "Unknown", accuracy);
+    } else {
+        snprintf(message, sizeof(message), "Target: %s", name != NULL ? name : "Unknown");
+    }
+
+    display_print(message);
+}
+
+static void game_cycle_keyboard_combat_target()
+{
+    game_keyboard_combat_target = game_find_keyboard_combat_target(true);
+    if (game_keyboard_combat_target == NULL) {
+        char message[] = "No visible enemy.";
+        display_print(message);
+        return;
+    }
+
+    game_focus_keyboard_combat_target(game_keyboard_combat_target);
+}
+
+static void game_attack_keyboard_combat_target()
+{
+    if (!isInCombat()) {
+        return;
+    }
+
+    game_keyboard_combat_target = game_find_keyboard_combat_target(false);
+    if (game_keyboard_combat_target == NULL) {
+        char message[] = "No visible enemy.";
+        display_print(message);
+        return;
+    }
+
+    combat_attack_this(game_keyboard_combat_target);
+}
+
+static bool game_is_interactable_nearby_object(Object* object)
+{
+    if (object == NULL || object == obj_dude) {
+        return false;
+    }
+
+    if ((object->flags & OBJECT_HIDDEN) != 0) {
+        return false;
+    }
+
+    if (object->elevation != map_elevation) {
+        return false;
+    }
+
+    if (!can_see(obj_dude, object)) {
+        return false;
+    }
+
+    switch (FID_TYPE(object->fid)) {
+    case OBJ_TYPE_ITEM:
+        return true;
+    case OBJ_TYPE_CRITTER:
+        return true;
+    case OBJ_TYPE_SCENERY:
+    case OBJ_TYPE_WALL:
+        return proto_action_can_use(object->pid);
+    default:
+        return false;
+    }
+}
+
+static void game_interact_with_nearest_object()
+{
+    Object* nearest = NULL;
+    int nearestDistance = 0x7FFFFFFF;
+
+    for (Object* object = obj_find_first_at(map_elevation); object != NULL; object = obj_find_next_at()) {
+        if (!game_is_interactable_nearby_object(object)) {
+            continue;
+        }
+
+        int distance = obj_dist(obj_dude, object);
+        if (distance < nearestDistance) {
+            nearestDistance = distance;
+            nearest = object;
+        }
+    }
+
+    if (nearest == NULL) {
+        char message[] = "Nothing nearby to interact with.";
+        display_print(message);
+        return;
+    }
+
+    switch (FID_TYPE(nearest->fid)) {
+    case OBJ_TYPE_ITEM:
+        action_get_an_object(obj_dude, nearest);
+        break;
+    case OBJ_TYPE_CRITTER:
+        if (obj_action_can_talk_to(nearest)) {
+            action_talk_to(obj_dude, nearest);
+        } else {
+            action_loot_container(obj_dude, nearest);
+        }
+        break;
+    case OBJ_TYPE_SCENERY:
+    case OBJ_TYPE_WALL:
+        action_use_an_object(obj_dude, nearest);
+        break;
+    }
+}
+
+static int game_direction_for_key(int eventCode)
+{
+    switch (eventCode) {
+    case KEY_ARROW_UP:
+        return ROTATION_NE;
+    case KEY_ARROW_DOWN:
+        return ROTATION_SW;
+    case KEY_ARROW_LEFT:
+        return ROTATION_NW;
+    case KEY_ARROW_RIGHT:
+        return ROTATION_SE;
+    case KEY_HOME:
+        return ROTATION_NW;
+    case KEY_PAGE_UP:
+        return ROTATION_E;
+    case KEY_END:
+        return ROTATION_W;
+    case KEY_PAGE_DOWN:
+        return ROTATION_SE;
+    default:
+        return -1;
+    }
+}
+
+static bool game_handle_keyboard_hex_movement(int eventCode, bool isInCombatMode)
+{
+    if (!intface_is_enabled() || obj_dude == NULL) {
+        return false;
+    }
+
+    int direction = game_direction_for_key(eventCode);
+    if (direction == -1) {
+        return false;
+    }
+
+    if (isInCombatMode && obj_dude->data.critter.combat.ap + combat_free_move <= 0) {
+        return true;
+    }
+
+    if (anim_busy(obj_dude) != 0) {
+        return true;
+    }
+
+    int tile = tile_num_in_direction(obj_dude->tile, direction, 1);
+    if (tile == obj_dude->tile) {
+        return true;
+    }
+
+    if (register_begin(ANIMATION_REQUEST_RESERVED) == 0) {
+        register_object_move_to_tile(obj_dude,
+            tile,
+            obj_dude->elevation,
+            isInCombatMode ? 1 : -1,
+            0);
+        register_end();
+    }
+
+    return true;
+}
+
 // 0x43B748
 int game_handle_input(int eventCode, bool isInCombatMode)
 {
@@ -486,6 +759,14 @@ int game_handle_input(int eventCode, bool isInCombatMode)
         return 0;
     }
 
+    if (!isInCombatMode) {
+        game_keyboard_combat_target = NULL;
+    }
+
+    if (game_handle_keyboard_hex_movement(eventCode, isInCombatMode)) {
+        return 0;
+    }
+
     switch (eventCode) {
     case -20:
         if (intface_is_enabled()) {
@@ -528,7 +809,25 @@ int game_handle_input(int eventCode, bool isInCombatMode)
             && keys[SDL_SCANCODE_LALT] == 0
             && keys[SDL_SCANCODE_RALT] == 0) {
             gsound_play_sfx_file("ib1p1xx1");
-            automap(true, false);
+            if (isInCombatMode) {
+                game_cycle_keyboard_combat_target();
+            } else {
+                automap(true, false);
+            }
+        }
+        break;
+    case KEY_RETURN:
+        if (intface_is_enabled()) {
+            if (isInCombatMode) {
+                game_attack_keyboard_combat_target();
+            } else {
+                game_interact_with_nearest_object();
+            }
+        }
+        break;
+    case KEY_SPACE:
+        if (intface_is_enabled() && !isInCombatMode) {
+            game_interact_with_nearest_object();
         }
         break;
     case KEY_CTRL_P:
@@ -676,7 +975,7 @@ int game_handle_input(int eventCode, bool isInCombatMode)
             }
         }
         break;
-    case KEY_HOME:
+    case KEY_CTRL_HOME:
         if (obj_dude->elevation != map_elevation) {
             map_set_elevation(obj_dude->elevation);
         }
@@ -870,16 +1169,16 @@ int game_handle_input(int eventCode, bool isInCombatMode)
             display_print(version_build_time);
         }
         break;
-    case KEY_ARROW_LEFT:
+    case KEY_CTRL_ARROW_LEFT:
         map_scroll(-1, 0);
         break;
-    case KEY_ARROW_RIGHT:
+    case KEY_CTRL_ARROW_RIGHT:
         map_scroll(1, 0);
         break;
-    case KEY_ARROW_UP:
+    case KEY_CTRL_ARROW_UP:
         map_scroll(0, -1);
         break;
-    case KEY_ARROW_DOWN:
+    case KEY_CTRL_ARROW_DOWN:
         map_scroll(0, 1);
         break;
     }

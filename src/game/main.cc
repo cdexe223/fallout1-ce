@@ -96,9 +96,6 @@ int gnw_main(int argc, char** argv)
         return 1;
     }
 
-    gmovie_play(MOVIE_IPLOGO, GAME_MOVIE_FADE_IN);
-    gmovie_play(MOVIE_INTRO, 0);
-
     if (main_menu_create() == 0) {
         int language_filter = 1;
         bool done = false;
