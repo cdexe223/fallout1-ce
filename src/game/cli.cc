@@ -55,6 +55,10 @@ constexpr const char* kCliInputPipePath = "/tmp/fallout-cli-in";
 constexpr const char* kCliOutputPath = "/tmp/fallout-cli-out.txt";
 constexpr int kMaxDisplayLogLines = 8;
 constexpr int kCliDebugObjectsPerElevationLimit = 50;
+constexpr int kCliGotoMaxPathLength = 100;
+constexpr int kCliGotoPathRotationsCapacity = 800;
+constexpr unsigned int kCliGotoWaitTimeoutMs = 60000;
+constexpr unsigned int kCliGotoWaitStepMs = 16;
 
 struct CliCommandResponse {
     bool ok;
@@ -67,9 +71,17 @@ struct NearbyObjectInfo {
     int direction;
 };
 
+struct CliPathTrackingContext {
+    bool active;
+    int targetTile;
+    int bestTile;
+    int bestDistance;
+};
+
 bool gCliEnabled = false;
 int gCliInputFd = -1;
 std::string gCliInputBuffer;
+CliPathTrackingContext gCliPathTrackingContext = { false, -1, -1, INT_MAX };
 
 std::string cliTrim(const std::string& value)
 {
@@ -417,6 +429,229 @@ Object* cliFindNearestExitGrid(int maxDistance)
     }
 
     return nearest;
+}
+
+Object* cliPathTrackingCallback(Object* object, int tile, int elevation)
+{
+    Object* blocker = obj_blocking_at(object, tile, elevation);
+
+    if (gCliPathTrackingContext.active && blocker == NULL) {
+        int distance = tile_dist(tile, gCliPathTrackingContext.targetTile);
+        if (gCliPathTrackingContext.bestTile == -1
+            || distance < gCliPathTrackingContext.bestDistance
+            || (distance == gCliPathTrackingContext.bestDistance && tile < gCliPathTrackingContext.bestTile)) {
+            gCliPathTrackingContext.bestTile = tile;
+            gCliPathTrackingContext.bestDistance = distance;
+        }
+    }
+
+    return blocker;
+}
+
+int cliMakePathWithClosest(Object* object, int from, int to, unsigned char* rotations, int flags, int* closestTilePtr)
+{
+    gCliPathTrackingContext.active = true;
+    gCliPathTrackingContext.targetTile = to;
+    gCliPathTrackingContext.bestTile = -1;
+    gCliPathTrackingContext.bestDistance = INT_MAX;
+
+    int pathLength = make_path_func(object, from, to, rotations, flags, cliPathTrackingCallback);
+
+    int closestTile = gCliPathTrackingContext.bestTile;
+
+    gCliPathTrackingContext.active = false;
+    gCliPathTrackingContext.targetTile = -1;
+    gCliPathTrackingContext.bestTile = -1;
+    gCliPathTrackingContext.bestDistance = INT_MAX;
+
+    if (closestTilePtr != NULL) {
+        if (closestTile == -1) {
+            closestTile = from;
+        }
+        *closestTilePtr = closestTile;
+    }
+
+    return pathLength;
+}
+
+int cliAdvanceAlongPath(int startTile, const unsigned char* rotations, int steps)
+{
+    int tile = startTile;
+    for (int index = 0; index < steps; index++) {
+        tile = tile_num_in_direction(tile, rotations[index], 1);
+    }
+    return tile;
+}
+
+int cliValidateClosestTile(Object* object, int fromTile, int closestTile)
+{
+    if (object == NULL) {
+        return fromTile;
+    }
+
+    if (make_path(object, fromTile, closestTile, NULL, 0) == 0) {
+        return fromTile;
+    }
+
+    return closestTile;
+}
+
+bool cliPlanFallbackMove(Object* object, int fromTile, int toTile, int* destinationTilePtr, int* plannedStepsPtr, bool* cappedPtr)
+{
+    if (destinationTilePtr == NULL || plannedStepsPtr == NULL || cappedPtr == NULL) {
+        return false;
+    }
+
+    *destinationTilePtr = fromTile;
+    *plannedStepsPtr = 0;
+    *cappedPtr = false;
+
+    if (object == NULL || fromTile == toTile) {
+        return false;
+    }
+
+    unsigned char rotations[kCliGotoPathRotationsCapacity];
+    int pathLength = make_path(object, fromTile, toTile, rotations, 0);
+    if (pathLength <= 0) {
+        return false;
+    }
+
+    *plannedStepsPtr = std::min(pathLength, kCliGotoMaxPathLength);
+    *cappedPtr = *plannedStepsPtr < pathLength;
+    *destinationTilePtr = *cappedPtr ? cliAdvanceAlongPath(fromTile, rotations, *plannedStepsPtr) : toTile;
+    return *plannedStepsPtr > 0;
+}
+
+bool cliWaitForObjectAnimationToComplete(Object* object, unsigned int timeoutMs)
+{
+    if (object == NULL) {
+        return false;
+    }
+
+    unsigned int start = get_time();
+    while (anim_busy(object) != 0) {
+        object_animate();
+
+        if (elapsed_tocks(get_time(), start) > timeoutMs) {
+            return false;
+        }
+
+        pause_for_tocks(kCliGotoWaitStepMs);
+    }
+
+    return true;
+}
+
+int cliGetPerceptionRange()
+{
+    if (obj_dude == NULL) {
+        return 0;
+    }
+
+    int perception = stat_level(obj_dude, STAT_PERCEPTION);
+    return std::max(6, perception * 3);
+}
+
+bool cliIsContainerForLook(Object* object)
+{
+    if (object == NULL) {
+        return false;
+    }
+
+    Proto* proto;
+    if (proto_ptr(object->pid, &proto) == -1) {
+        return object->data.inventory.length > 0;
+    }
+
+    if (PID_TYPE(object->pid) == OBJ_TYPE_ITEM) {
+        if (proto->item.type == ITEM_TYPE_CONTAINER) {
+            return true;
+        }
+
+        return object->data.inventory.length > 0;
+    }
+
+    if (PID_TYPE(object->pid) == OBJ_TYPE_SCENERY && proto->scenery.type != SCENERY_TYPE_DOOR) {
+        return object->data.inventory.length > 0;
+    }
+
+    return false;
+}
+
+bool cliIsNotableSceneryForLook(Object* object)
+{
+    if (object == NULL || PID_TYPE(object->pid) != OBJ_TYPE_SCENERY) {
+        return false;
+    }
+
+    Proto* proto;
+    if (proto_ptr(object->pid, &proto) == -1) {
+        return false;
+    }
+
+    if (proto->scenery.type == SCENERY_TYPE_DOOR) {
+        return false;
+    }
+
+    if (proto->scenery.type == SCENERY_TYPE_ELEVATOR
+        || proto->scenery.type == SCENERY_TYPE_LADDER_UP
+        || proto->scenery.type == SCENERY_TYPE_LADDER_DOWN) {
+        return true;
+    }
+
+    const char* rawName = object_name(object);
+    std::string lowerName = cliToLower(rawName != NULL ? rawName : "");
+
+    const char* excludedKeywords[] = {
+        "wall",
+        "blocker",
+        "secret block",
+        "cave wall",
+        "pipe",
+        "vent",
+        "light",
+    };
+
+    for (const char* keyword : excludedKeywords) {
+        if (lowerName.find(keyword) != std::string::npos) {
+            return false;
+        }
+    }
+
+    const char* includedKeywords[] = {
+        "computer",
+        "terminal",
+        "elevator",
+        "ladder",
+        "bed",
+        "locker",
+        "desk",
+        "console",
+        "panel",
+    };
+
+    for (const char* keyword : includedKeywords) {
+        if (lowerName.find(keyword) != std::string::npos) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+void cliSortNearbyObjects(std::vector<NearbyObjectInfo>* entries)
+{
+    if (entries == NULL) {
+        return;
+    }
+
+    std::sort(entries->begin(), entries->end(), [](const NearbyObjectInfo& lhs, const NearbyObjectInfo& rhs) {
+        if (lhs.distance != rhs.distance) {
+            return lhs.distance < rhs.distance;
+        }
+
+        return lhs.object->id < rhs.object->id;
+    });
 }
 
 int cliParseSkill(const std::string& skill)
@@ -983,6 +1218,192 @@ std::string cliBuildStateDump()
     return out.str();
 }
 
+std::string cliBuildLookDump()
+{
+    std::ostringstream out;
+
+    std::vector<NearbyObjectInfo> npcs;
+    std::vector<NearbyObjectInfo> items;
+    std::vector<NearbyObjectInfo> containers;
+    std::vector<NearbyObjectInfo> doors;
+    std::vector<NearbyObjectInfo> exits;
+    std::vector<NearbyObjectInfo> scenery;
+
+    if (obj_dude != NULL) {
+        int maxDistance = cliGetPerceptionRange();
+        std::vector<Object*> objects = cliCollectObjectsAtElevation(obj_dude->elevation);
+
+        for (Object* object : objects) {
+            if (object == obj_dude) {
+                continue;
+            }
+
+            if ((object->flags & OBJECT_HIDDEN) != 0) {
+                continue;
+            }
+
+            int distance = tile_dist(obj_dude->tile, object->tile);
+            if (distance > maxDistance) {
+                continue;
+            }
+
+            if (distance > 0 && !can_see(obj_dude, object)) {
+                continue;
+            }
+
+            NearbyObjectInfo info;
+            info.object = object;
+            info.distance = distance;
+            info.direction = distance == 0 ? -1 : tile_dir(obj_dude->tile, object->tile);
+
+            Proto* proto = NULL;
+            proto_ptr(object->pid, &proto);
+
+            int pidType = PID_TYPE(object->pid);
+            if (pidType == OBJ_TYPE_CRITTER) {
+                npcs.push_back(info);
+                continue;
+            }
+
+            if (cliIsExitGrid(object)) {
+                exits.push_back(info);
+                continue;
+            }
+
+            if (pidType == OBJ_TYPE_SCENERY && proto != NULL && proto->scenery.type == SCENERY_TYPE_DOOR) {
+                doors.push_back(info);
+                continue;
+            }
+
+            if (cliIsContainerForLook(object)) {
+                containers.push_back(info);
+                continue;
+            }
+
+            if (pidType == OBJ_TYPE_ITEM) {
+                items.push_back(info);
+                continue;
+            }
+
+            if (pidType == OBJ_TYPE_SCENERY && cliIsNotableSceneryForLook(object)) {
+                scenery.push_back(info);
+            }
+        }
+    }
+
+    cliSortNearbyObjects(&npcs);
+    cliSortNearbyObjects(&items);
+    cliSortNearbyObjects(&containers);
+    cliSortNearbyObjects(&doors);
+    cliSortNearbyObjects(&exits);
+    cliSortNearbyObjects(&scenery);
+
+    auto appendDirection = [&](std::ostringstream& stream, int direction) {
+        if (direction >= 0) {
+            stream << cliDirectionToString(direction);
+        } else {
+            stream << "here";
+        }
+    };
+
+    out << "[NPCS]\n";
+    out << "count=" << npcs.size() << "\n";
+    if (obj_dude != NULL) {
+        for (const NearbyObjectInfo& entry : npcs) {
+            Object* object = entry.object;
+            int maxHp = stat_level(object, STAT_MAXIMUM_HIT_POINTS);
+            int hostile = object->data.critter.combat.team != obj_dude->data.critter.combat.team ? 1 : 0;
+            out << '[' << object->id << "] ";
+            out << "name=" << cliEscapeValue(object_name(object));
+            out << " distance=" << entry.distance;
+            out << " direction=";
+            appendDirection(out, entry.direction);
+            out << " tile=" << object->tile;
+            out << " hp=" << critter_get_hits(object) << '/' << maxHp;
+            out << " hostile=" << hostile;
+            out << "\n";
+        }
+    }
+
+    out << "\n[ITEMS]\n";
+    out << "count=" << items.size() << "\n";
+    for (const NearbyObjectInfo& entry : items) {
+        Object* object = entry.object;
+        out << '[' << object->id << "] ";
+        out << "name=" << cliEscapeValue(object_name(object));
+        out << " distance=" << entry.distance;
+        out << " direction=";
+        appendDirection(out, entry.direction);
+        out << " tile=" << object->tile;
+        out << "\n";
+    }
+
+    out << "\n[CONTAINERS]\n";
+    out << "count=" << containers.size() << "\n";
+    for (const NearbyObjectInfo& entry : containers) {
+        Object* object = entry.object;
+        out << '[' << object->id << "] ";
+        out << "name=" << cliEscapeValue(object_name(object));
+        out << " distance=" << entry.distance;
+        out << " direction=";
+        appendDirection(out, entry.direction);
+        out << " tile=" << object->tile;
+        out << "\n";
+    }
+
+    out << "\n[DOORS]\n";
+    out << "count=" << doors.size() << "\n";
+    for (const NearbyObjectInfo& entry : doors) {
+        Object* object = entry.object;
+        const char* state;
+        if (obj_is_locked(object)) {
+            state = "locked";
+        } else if (obj_is_open(object) != 0) {
+            state = "open";
+        } else {
+            state = "closed";
+        }
+
+        out << '[' << object->id << "] ";
+        out << "name=" << cliEscapeValue(object_name(object));
+        out << " distance=" << entry.distance;
+        out << " direction=";
+        appendDirection(out, entry.direction);
+        out << " tile=" << object->tile;
+        out << " state=" << state;
+        out << "\n";
+    }
+
+    out << "\n[EXITS]\n";
+    out << "count=" << exits.size() << "\n";
+    for (const NearbyObjectInfo& entry : exits) {
+        Object* object = entry.object;
+        out << '[' << object->id << "] ";
+        out << "name=" << cliEscapeValue(object_name(object));
+        out << " distance=" << entry.distance;
+        out << " direction=";
+        appendDirection(out, entry.direction);
+        out << " tile=" << object->tile;
+        out << " pid=0x" << std::hex << object->pid << std::dec;
+        out << "\n";
+    }
+
+    out << "\n[SCENERY]\n";
+    out << "count=" << scenery.size() << "\n";
+    for (const NearbyObjectInfo& entry : scenery) {
+        Object* object = entry.object;
+        out << '[' << object->id << "] ";
+        out << "name=" << cliEscapeValue(object_name(object));
+        out << " distance=" << entry.distance;
+        out << " direction=";
+        appendDirection(out, entry.direction);
+        out << " tile=" << object->tile;
+        out << "\n";
+    }
+
+    return out.str();
+}
+
 CliCommandResponse cliOk(const std::string& body)
 {
     CliCommandResponse response;
@@ -1012,12 +1433,12 @@ std::string cliHelpText()
 {
     return std::string(
         "Commands:\n"
-        "state | help | debug_objects | debug_nearby\n"
+        "state | look | help | debug_objects | debug_nearby\n"
         "new_game | load_game | exit\n"
         "key <code|name>\n"
         "stat_inc <stat> | stat_dec <stat>\n"
         "tag_skill <skill_name> | trait_select <trait_name_or_index> | set_name <name> | done\n"
-        "move <direction> | move_to <tile> | enter | scan_exits\n"
+        "move <direction> | move_to <tile> | goto <object_id_or_tile> | enter | scan_exits\n"
         "interact <object_id> | talk <npc_id> | pickup <object_id>\n"
         "use_skill <skill_name> <target_id> | wait <hours>\n"
         "attack <target_id> [body_part] | end_turn | reload | change_weapon | flee\n"
@@ -1042,6 +1463,14 @@ CliCommandResponse cliExecuteCommand(const std::string& line)
 
     if (command == "state") {
         return cliOk(cliBuildStateDump());
+    }
+
+    if (command == "look") {
+        if (obj_dude == NULL) {
+            return cliError("player_unavailable");
+        }
+
+        return cliOk(cliBuildLookDump());
     }
 
     if (command == "debug_objects") {
@@ -1459,6 +1888,183 @@ CliCommandResponse cliExecuteCommand(const std::string& line)
 
         std::ostringstream out;
         out << "destination_tile=" << destination;
+        return cliOk(out.str());
+    }
+
+    if (command == "goto") {
+        if (tokens.size() < 2) {
+            return cliError("usage=goto <object_id_or_tile>");
+        }
+
+        if (obj_dude == NULL) {
+            return cliError("player_unavailable");
+        }
+
+        int targetIdOrTile;
+        if (!cliParseInteger(tokens[1], &targetIdOrTile)) {
+            return cliError("invalid_target");
+        }
+
+        if (!cliWaitForObjectAnimationToComplete(obj_dude, kCliGotoWaitTimeoutMs)) {
+            return cliError("animation_timeout");
+        }
+
+        int playerTile = obj_dude->tile;
+        int playerElevation = obj_dude->elevation;
+
+        Object* targetObject = cliFindWorldObjectById(targetIdOrTile);
+        bool targetIsObject = targetObject != NULL;
+
+        int targetTile = playerTile;
+        int destinationTile = playerTile;
+        int plannedSteps = 0;
+        bool capped = false;
+        bool arrivedAdjacent = false;
+        bool shouldMove = false;
+        bool partialResult = false;
+
+        if (targetIsObject) {
+            targetTile = targetObject->tile;
+            if (targetObject->elevation != playerElevation) {
+                std::ostringstream out;
+                out << "different_elevation\n";
+                out << "player_elevation=" << playerElevation << "\n";
+                out << "target_elevation=" << targetObject->elevation;
+                return cliError(out.str());
+            }
+
+            if (obj_dist(obj_dude, targetObject) <= 1) {
+                arrivedAdjacent = true;
+            } else {
+                unsigned char rotations[kCliGotoPathRotationsCapacity];
+                int closestTile = playerTile;
+                int pathLength = cliMakePathWithClosest(obj_dude, playerTile, targetTile, rotations, 0, &closestTile);
+                closestTile = cliValidateClosestTile(obj_dude, playerTile, closestTile);
+                if (pathLength == 0) {
+                    if (cliPlanFallbackMove(obj_dude, playerTile, closestTile, &destinationTile, &plannedSteps, &capped)) {
+                        shouldMove = true;
+                        partialResult = true;
+                    } else {
+                        std::ostringstream out;
+                        out << "unreachable\n";
+                        out << "closest_tile=" << closestTile << "\n";
+                        out << "distance_from_target=" << tile_dist(closestTile, targetTile);
+                        return cliError(out.str());
+                    }
+                } else {
+                    int stopDistance = (targetObject->flags & OBJECT_MULTIHEX) != 0 ? 2 : 1;
+                    int stepsToAdjacent = pathLength - stopDistance;
+                    if (stepsToAdjacent <= 0) {
+                        arrivedAdjacent = true;
+                    } else {
+                        plannedSteps = std::min(stepsToAdjacent, kCliGotoMaxPathLength);
+                        capped = plannedSteps < stepsToAdjacent;
+                        destinationTile = cliAdvanceAlongPath(playerTile, rotations, plannedSteps);
+                        shouldMove = plannedSteps > 0;
+                    }
+                }
+            }
+        } else {
+            if (targetIdOrTile < 0 || targetIdOrTile >= HEX_GRID_SIZE) {
+                return cliError("tile_out_of_range");
+            }
+
+            targetTile = targetIdOrTile;
+
+            if (playerTile != targetTile) {
+                bool targetBlocked = obj_blocking_at(obj_dude, targetTile, playerElevation) != NULL;
+                unsigned char rotations[kCliGotoPathRotationsCapacity];
+                int closestTile = playerTile;
+                int pathLength = cliMakePathWithClosest(obj_dude, playerTile, targetTile, rotations, targetBlocked ? 0 : 1, &closestTile);
+                closestTile = cliValidateClosestTile(obj_dude, playerTile, closestTile);
+
+                if (!targetBlocked) {
+                    if (pathLength == 0) {
+                        if (cliPlanFallbackMove(obj_dude, playerTile, closestTile, &destinationTile, &plannedSteps, &capped)) {
+                            shouldMove = true;
+                            partialResult = true;
+                        } else {
+                            std::ostringstream out;
+                            out << "unreachable\n";
+                            out << "closest_tile=" << closestTile << "\n";
+                            out << "distance_from_target=" << tile_dist(closestTile, targetTile);
+                            return cliError(out.str());
+                        }
+                    } else {
+                        plannedSteps = std::min(pathLength, kCliGotoMaxPathLength);
+                        capped = plannedSteps < pathLength;
+                        destinationTile = capped ? cliAdvanceAlongPath(playerTile, rotations, plannedSteps) : targetTile;
+                        shouldMove = plannedSteps > 0;
+                    }
+                } else {
+                    if (pathLength > 0) {
+                        int stepsToNearestWalkable = pathLength - 1;
+                        plannedSteps = std::min(stepsToNearestWalkable, kCliGotoMaxPathLength);
+                        capped = plannedSteps < stepsToNearestWalkable;
+                        destinationTile = plannedSteps > 0 ? cliAdvanceAlongPath(playerTile, rotations, plannedSteps) : playerTile;
+                        shouldMove = plannedSteps > 0;
+                    } else {
+                        if (cliPlanFallbackMove(obj_dude, playerTile, closestTile, &destinationTile, &plannedSteps, &capped)) {
+                            shouldMove = true;
+                            partialResult = true;
+                        }
+
+                        if (!shouldMove && tile_dist(playerTile, targetTile) > 0) {
+                            std::ostringstream out;
+                            out << "unreachable\n";
+                            out << "closest_tile=" << closestTile << "\n";
+                            out << "distance_from_target=" << tile_dist(closestTile, targetTile);
+                            return cliError(out.str());
+                        }
+                    }
+                }
+            }
+        }
+
+        if (shouldMove) {
+            int actionPoints = isInCombat() ? obj_dude->data.critter.combat.ap : -1;
+
+            if (register_begin(ANIMATION_REQUEST_UNRESERVED) != 0) {
+                return cliError("move_failed");
+            }
+
+            if (register_object_move_to_tile(obj_dude, destinationTile, playerElevation, actionPoints, 0) != 0) {
+                register_end();
+                return cliError("move_failed");
+            }
+
+            if (register_end() != 0) {
+                return cliError("move_failed");
+            }
+
+            if (!cliWaitForObjectAnimationToComplete(obj_dude, kCliGotoWaitTimeoutMs)) {
+                return cliError("animation_timeout");
+            }
+
+            tile_scroll_to(obj_dude->tile, 2);
+        }
+
+        int finalTile = obj_dude->tile;
+        int distanceFromTarget = tile_dist(finalTile, targetTile);
+        if (targetIsObject) {
+            arrivedAdjacent = obj_dist(obj_dude, targetObject) <= 1;
+        }
+
+        std::ostringstream out;
+        if (partialResult) {
+            out << "result=partial\n";
+        }
+        out << "target_kind=" << (targetIsObject ? "object" : "tile") << "\n";
+        if (targetIsObject) {
+            out << "target_object_id=" << targetObject->id << "\n";
+        }
+        out << "target_tile=" << targetTile << "\n";
+        out << "destination_tile=" << destinationTile << "\n";
+        out << "planned_steps=" << plannedSteps << "\n";
+        out << "capped=" << (capped ? 1 : 0) << "\n";
+        out << "final_tile=" << finalTile << "\n";
+        out << "distance_from_target=" << distanceFromTarget << "\n";
+        out << "arrived_adjacent=" << (arrivedAdjacent ? 1 : 0);
         return cliOk(out.str());
     }
 
