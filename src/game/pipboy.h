@@ -16,6 +16,7 @@ typedef enum PipboyOpenIntent {
 typedef void(PipboyRenderProc)(int a1);
 
 int pipboy(int intent);
+bool pipboy_is_open();
 void pip_init();
 int save_pipboy(DB_FILE* stream);
 int load_pipboy(DB_FILE* stream);

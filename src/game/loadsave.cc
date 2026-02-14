@@ -335,6 +335,23 @@ void ResetLoadSave()
     MapDirErase("MAPS\\", "SAV");
 }
 
+void loadsave_set_quick_slot(int slot)
+{
+    if (slot < 0) {
+        slot = 0;
+    } else if (slot > 9) {
+        slot = 9;
+    }
+
+    slot_cursor = slot;
+    quick_done = true;
+}
+
+int loadsave_get_quick_slot()
+{
+    return slot_cursor;
+}
+
 // 0x46D9C4
 int SaveGame(int mode)
 {

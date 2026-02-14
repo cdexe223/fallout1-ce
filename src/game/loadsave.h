@@ -23,6 +23,8 @@ void InitLoadSave();
 void ResetLoadSave();
 int SaveGame(int mode);
 int LoadGame(int mode);
+void loadsave_set_quick_slot(int slot);
+int loadsave_get_quick_slot();
 int isLoadingGame();
 void KillOldMaps();
 int MapDirErase(const char* path, const char* a2);

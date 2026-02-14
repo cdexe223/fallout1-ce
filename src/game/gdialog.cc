@@ -591,6 +591,38 @@ bool dialog_active()
     return dialog_state_fix != 0;
 }
 
+int gdialog_get_option_count()
+{
+    return dialog_active() ? gdNumOptions : 0;
+}
+
+const char* gdialog_get_option_text(int index)
+{
+    if (!dialog_active() || index < 0 || index >= gdNumOptions) {
+        return NULL;
+    }
+
+    return dialogBlock.options[index].text;
+}
+
+const char* gdialog_get_reply_text()
+{
+    if (!dialog_active()) {
+        return NULL;
+    }
+
+    return dialogBlock.replyText;
+}
+
+int gdialog_select_option(int index)
+{
+    if (!dialog_active() || index < 0 || index >= gdNumOptions) {
+        return -1;
+    }
+
+    return gDialogProcessChoice(index);
+}
+
 // 0x43DE28
 void gdialog_enter(Object* target, int a2)
 {

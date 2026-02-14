@@ -1,5 +1,6 @@
 #include "game/display.h"
 
+#include <stdio.h>
 #include <string.h>
 
 #include "game/art.h"
@@ -386,6 +387,53 @@ void display_enable()
         win_enable_button(up_bid);
         display_enabled = true;
     }
+}
+
+int display_get_last_messages(char* buffer, int bufferSize, int maxLines)
+{
+    if (buffer == NULL || bufferSize <= 0) {
+        return 0;
+    }
+
+    buffer[0] = '\0';
+
+    if (!disp_init || maxLines <= 0) {
+        return 0;
+    }
+
+    if (maxLines > DISPLAY_MONITOR_LINES_CAPACITY) {
+        maxLines = DISPLAY_MONITOR_LINES_CAPACITY;
+    }
+
+    int indexes[DISPLAY_MONITOR_LINES_CAPACITY];
+    int count = 0;
+
+    for (int offset = 0; offset < max_ptr && count < maxLines; offset++) {
+        int index = (disp_start + max_ptr - 1 - offset) % max_ptr;
+        if (disp_str[index][0] != '\0') {
+            indexes[count++] = index;
+        }
+    }
+
+    int position = 0;
+    for (int index = count - 1; index >= 0; index--) {
+        const char* message = disp_str[indexes[index]];
+        int written = snprintf(buffer + position, bufferSize - position, "%s%s", position == 0 ? "" : "\n", message);
+        if (written < 0) {
+            break;
+        }
+
+        if (written >= bufferSize - position) {
+            position = bufferSize - 1;
+            break;
+        }
+
+        position += written;
+    }
+
+    buffer[position] = '\0';
+
+    return count;
 }
 
 } // namespace fallout

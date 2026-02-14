@@ -12,6 +12,7 @@
 
 #include <limits.h>
 #include <stddef.h>
+#include <string.h>
 
 #include "game/amutex.h"
 #include "game/art.h"
@@ -20,6 +21,7 @@
 #include "game/endgame.h"
 #include "game/game.h"
 #include "game/gconfig.h"
+#include "game/cli.h"
 #include "game/gmouse.h"
 #include "game/gmovie.h"
 #include "game/gsound.h"
@@ -63,6 +65,7 @@ static void main_selfrun_record();
 static void main_selfrun_play();
 static void main_death_scene();
 static void main_death_voiceover_callback();
+static bool main_has_cli_flag(int argc, char** argv);
 
 // 0x4F9F70
 static char mainMap[] = "V13Ent.map";
@@ -88,6 +91,8 @@ static bool main_death_voiceover_done;
 // 0x4725E8
 int gnw_main(int argc, char** argv)
 {
+    cli_set_enabled(main_has_cli_flag(argc, argv));
+
     if (!autorun_mutex_create()) {
         return 1;
     }
@@ -227,6 +232,14 @@ static bool main_init_system(int argc, char** argv)
         return false;
     }
 
+    if (cli_is_enabled()) {
+        if (cli_init() != 0) {
+            return false;
+        }
+
+        add_bk_process(cli_process_bk);
+    }
+
     // NOTE: Uninline.
     main_selfrun_init();
 
@@ -246,6 +259,11 @@ static void main_exit_system()
 {
     gsound_background_stop();
 
+    if (cli_is_enabled()) {
+        remove_bk_process(cli_process_bk);
+        cli_exit();
+    }
+
     // NOTE: Uninline.
     main_selfrun_exit();
 
@@ -253,6 +271,17 @@ static void main_exit_system()
 
     // TODO: Find a better place for this call.
     SDL_Quit();
+}
+
+static bool main_has_cli_flag(int argc, char** argv)
+{
+    for (int index = 1; index < argc; index++) {
+        if (strcmp(argv[index], "--cli") == 0) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 // 0x472958

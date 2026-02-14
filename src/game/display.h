@@ -16,6 +16,7 @@ void display_arrow_down(int btn, int keyCode);
 void display_arrow_restore(int btn, int keyCode);
 void display_disable();
 void display_enable();
+int display_get_last_messages(char* buffer, int bufferSize, int maxLines);
 
 } // namespace fallout
 

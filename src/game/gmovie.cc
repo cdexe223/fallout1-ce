@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "game/cycle.h"
+#include "game/cli.h"
 #include "game/game.h"
 #include "game/gconfig.h"
 #include "game/gmouse.h"
@@ -101,6 +102,11 @@ int gmovie_save(DB_FILE* stream)
 // 0x44E690
 int gmovie_play(int game_movie, int game_movie_flags)
 {
+    if (cli_is_enabled()) {
+        gmovie_played_list[game_movie] = 1;
+        return 0;
+    }
+
     dir_entry de;
     char movieFilePath[COMPAT_MAX_PATH];
 

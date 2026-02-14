@@ -56,6 +56,8 @@ void display_target_inventory(int a1, int a2, Inventory* a3, int a4);
 void display_body(int fid, int inventoryWindowType);
 int inven_init();
 void inven_exit();
+bool inven_is_open();
+int inven_get_window_type();
 void inven_set_mouse(int cursor);
 void inven_hover_on(int btn, int keyCode);
 void inven_hover_off(int btn, int keyCode);

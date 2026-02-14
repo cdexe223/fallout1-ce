@@ -502,7 +502,7 @@ static int SliderNegID;
 static MessageListItem mesg;
 
 // 0x56EC74
-static int edit_win;
+static int edit_win = -1;
 
 // 0x56EC78
 static unsigned char* pwin_buf;
@@ -1385,6 +1385,7 @@ static int CharEditStart()
 static void CharEditEnd()
 {
     win_delete(edit_win);
+    edit_win = -1;
 
     for (int index = 0; index < EDITOR_GRAPHIC_COUNT; index++) {
         art_ptr_unlock(grph_key[index]);
@@ -1437,6 +1438,7 @@ void CharEditInit()
     slider_y = 27;
     free_perk = 0;
     folder = EDITOR_FOLDER_PERKS;
+    edit_win = -1;
 
     for (i = 0; i < 2; i++) {
         temp_trait[i] = -1;
@@ -6204,6 +6206,150 @@ static int is_supper_bonus()
         if (v1 + v2 > 10) {
             return 1;
         }
+    }
+
+    return 0;
+}
+
+bool editor_is_active()
+{
+    return edit_win != -1;
+}
+
+bool editor_is_creation_mode()
+{
+    return editor_is_active() && glblmode == 1;
+}
+
+int editor_get_remaining_tag_skill_count()
+{
+    return tagskill_count;
+}
+
+int editor_get_remaining_trait_count()
+{
+    return trait_count;
+}
+
+int editor_get_temp_tag_skill(int index)
+{
+    if (index < 0 || index >= NUM_TAGGED_SKILLS) {
+        return -1;
+    }
+
+    return temp_tag_skill[index];
+}
+
+int editor_get_temp_trait(int index)
+{
+    if (index < 0 || index >= 2) {
+        return -1;
+    }
+
+    return temp_trait[index];
+}
+
+bool editor_has_invalid_special_stats()
+{
+    return is_supper_bonus() != 0;
+}
+
+int editor_cli_tag_skill(int skill)
+{
+    if (!editor_is_creation_mode()) {
+        return -1;
+    }
+
+    if (skill < 0 || skill >= SKILL_COUNT) {
+        return -1;
+    }
+
+    int taggedIndex = -1;
+    for (int index = 0; index < NUM_TAGGED_SKILLS; index++) {
+        if (temp_tag_skill[index] == skill) {
+            taggedIndex = index;
+            break;
+        }
+    }
+
+    if (taggedIndex != -1) {
+        for (int index = taggedIndex; index < NUM_TAGGED_SKILLS - 1; index++) {
+            temp_tag_skill[index] = temp_tag_skill[index + 1];
+        }
+        temp_tag_skill[NUM_TAGGED_SKILLS - 1] = -1;
+    } else {
+        if (tagskill_count <= 0) {
+            return -1;
+        }
+
+        int insertionIndex = -1;
+        for (int index = 0; index < NUM_TAGGED_SKILLS; index++) {
+            if (temp_tag_skill[index] == -1) {
+                insertionIndex = index;
+                break;
+            }
+        }
+
+        if (insertionIndex == -1) {
+            return -1;
+        }
+
+        temp_tag_skill[insertionIndex] = skill;
+    }
+
+    skill_set_tags(temp_tag_skill, NUM_TAGGED_SKILLS);
+    tagskill_count = tagskl_free();
+
+    return 0;
+}
+
+int editor_cli_toggle_trait(int trait)
+{
+    if (!editor_is_creation_mode()) {
+        return -1;
+    }
+
+    if (trait < 0 || trait >= TRAIT_COUNT) {
+        return -1;
+    }
+
+    int selectedIndex = -1;
+    for (int index = 0; index < 2; index++) {
+        if (temp_trait[index] == trait) {
+            selectedIndex = index;
+            break;
+        }
+    }
+
+    if (selectedIndex != -1) {
+        for (int index = selectedIndex; index < 1; index++) {
+            temp_trait[index] = temp_trait[index + 1];
+        }
+        temp_trait[1] = -1;
+    } else {
+        if (trait_count <= 0) {
+            return -1;
+        }
+
+        int insertionIndex = -1;
+        for (int index = 0; index < 2; index++) {
+            if (temp_trait[index] == -1) {
+                insertionIndex = index;
+                break;
+            }
+        }
+
+        if (insertionIndex == -1) {
+            return -1;
+        }
+
+        temp_trait[insertionIndex] = trait;
+    }
+
+    trait_count = get_trait_count();
+    trait_set(temp_trait[0], temp_trait[1]);
+    if (obj_dude != NULL) {
+        stat_recalc_derived(obj_dude);
     }
 
     return 0;

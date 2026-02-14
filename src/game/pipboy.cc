@@ -477,6 +477,9 @@ static int old_mouse_y;
 // 0x662C88
 static int pip_win;
 
+// 0x662C89
+static bool pipboy_window_open = false;
+
 // 0x662BCC
 static CacheEntry* grphkey[PIPBOY_FRM_COUNT];
 
@@ -601,9 +604,16 @@ int pipboy(int intent)
     return 0;
 }
 
+bool pipboy_is_open()
+{
+    return pipboy_window_open;
+}
+
 // 0x486C5C
 static int StartPipboy(int intent)
 {
+    pipboy_window_open = false;
+
     bk_enable = map_disable_bk_processes();
 
     cycle_disable();
@@ -661,6 +671,8 @@ static int StartPipboy(int intent)
         }
         return -1;
     }
+
+    pipboy_window_open = true;
 
     scrn_buf = win_get_buf(pip_win);
     memcpy(scrn_buf, pipbmp[PIPBOY_FRM_BACKGROUND], PIPBOY_WINDOW_WIDTH * PIPBOY_WINDOW_HEIGHT);
@@ -807,6 +819,8 @@ static int StartPipboy(int intent)
 // 0x487218
 static void EndPipboy()
 {
+    pipboy_window_open = false;
+
     bool showScriptMessages = false;
     configGetBool(&game_config, GAME_CONFIG_DEBUG_KEY, GAME_CONFIG_SHOW_SCRIPT_MESSAGES_KEY, &showScriptMessages);
 

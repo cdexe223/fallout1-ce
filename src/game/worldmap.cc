@@ -1,6 +1,7 @@
 #include "game/worldmap.h"
 
 #include <assert.h>
+#include <ctype.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -380,6 +381,21 @@ static const CityLocationEntry city_location[TOWN_COUNT] = {
     /*      THE GLOW */ { 24, 25 },
     /*      BONEYARD */ { 15, 18 },
     /*     CATHEDRAL */ { 15, 20 },
+};
+
+static const char* canonical_town_names[TOWN_COUNT] = {
+    "Vault 13",
+    "Vault 15",
+    "Shady Sands",
+    "Junktown",
+    "Raiders",
+    "Necropolis",
+    "The Hub",
+    "Brotherhood",
+    "Military Base",
+    "The Glow",
+    "Boneyard",
+    "Cathedral",
 };
 
 // 0x4A9E94
@@ -3659,6 +3675,125 @@ static void DrawTMAPsels(int win, int city)
                 640);
         }
     }
+}
+
+static void worldmap_normalize_name(const char* src, char* dest, size_t size)
+{
+    if (size == 0) {
+        return;
+    }
+
+    size_t destIndex = 0;
+    while (*src != '\0' && destIndex + 1 < size) {
+        unsigned char ch = static_cast<unsigned char>(*src);
+        if (isalnum(ch)) {
+            dest[destIndex++] = static_cast<char>(tolower(ch));
+        }
+        src++;
+    }
+
+    dest[destIndex] = '\0';
+}
+
+bool worldmap_is_active()
+{
+    return wwin_flag != 0;
+}
+
+void worldmap_get_position(int* xPtr, int* yPtr)
+{
+    if (xPtr != NULL) {
+        *xPtr = world_xpos;
+    }
+
+    if (yPtr != NULL) {
+        *yPtr = world_ypos;
+    }
+}
+
+bool worldmap_is_town_known(int town)
+{
+    if (town < 0 || town >= TOWN_COUNT) {
+        return false;
+    }
+
+    if (town == TOWN_VAULT_13) {
+        return true;
+    }
+
+    if (town <= TOWN_CATHEDRAL) {
+        if (game_global_vars[cityXgvar[town]] == 1) {
+            return true;
+        }
+    }
+
+    if ((first_visit_flag & (1 << town)) != 0) {
+        return true;
+    }
+
+    return TwnSelKnwFlag[town][0] != 0;
+}
+
+int worldmap_get_known_towns(int* towns, int capacity)
+{
+    int count = 0;
+
+    for (int town = 0; town < TOWN_COUNT; town++) {
+        if (!worldmap_is_town_known(town)) {
+            continue;
+        }
+
+        if (towns != NULL && count < capacity) {
+            towns[count] = town;
+        }
+
+        count++;
+    }
+
+    return count;
+}
+
+const char* worldmap_get_town_name(int town)
+{
+    if (town < 0 || town >= TOWN_COUNT) {
+        return NULL;
+    }
+
+    MessageListItem messageListItem;
+    messageListItem.num = 500 + town;
+    if (message_search(&map_msg_file, &messageListItem)) {
+        return messageListItem.text;
+    }
+
+    return canonical_town_names[town];
+}
+
+int worldmap_find_town_by_name(const char* name)
+{
+    if (name == NULL || *name == '\0') {
+        return -1;
+    }
+
+    char normalizedQuery[64];
+    worldmap_normalize_name(name, normalizedQuery, sizeof(normalizedQuery));
+    if (normalizedQuery[0] == '\0') {
+        return -1;
+    }
+
+    for (int town = 0; town < TOWN_COUNT; town++) {
+        const char* townName = worldmap_get_town_name(town);
+        if (townName == NULL) {
+            continue;
+        }
+
+        char normalizedTownName[64];
+        worldmap_normalize_name(townName, normalizedTownName, sizeof(normalizedTownName));
+        if (strcmp(normalizedQuery, normalizedTownName) == 0) {
+            return town;
+        }
+    }
+
+    return -1;
 }
 
 // 0x4AE980

@@ -235,6 +235,12 @@ static bool inven_is_initialized = false;
 // 0x50564C
 static int inven_display_msg_line = 1;
 
+// 0x50564D
+static bool inven_window_open = false;
+
+// 0x50564E
+static int inven_window_type = -1;
+
 // 0x505650
 static InventoryWindowDescription iscr_data[INVENTORY_WINDOW_TYPE_COUNT] = {
     { 48, INVENTORY_WINDOW_WIDTH, 377, 80, 0 },
@@ -529,6 +535,9 @@ void handle_inventory()
 // 0x462818
 bool setup_inventory(int inventoryWindowType)
 {
+    inven_window_open = false;
+    inven_window_type = -1;
+
     dropped_explosive = 0;
     curr_stack = 0;
     stack_offset[0] = 0;
@@ -1233,12 +1242,18 @@ bool setup_inventory(int inventoryWindowType)
 
     gmouse_disable(0);
 
+    inven_window_open = true;
+    inven_window_type = inventoryWindowType;
+
     return isoWasEnabled;
 }
 
 // 0x46353C
 void exit_inventory(bool shouldEnableIso)
 {
+    inven_window_open = false;
+    inven_window_type = -1;
+
     inven_dude = stack[0];
 
     if (i_lhand != NULL) {
@@ -1880,6 +1895,16 @@ void inven_exit()
     inventry_msg_unload();
 
     inven_is_initialized = 0;
+}
+
+bool inven_is_open()
+{
+    return inven_window_open;
+}
+
+int inven_get_window_type()
+{
+    return inven_window_type;
 }
 
 // 0x4643EC

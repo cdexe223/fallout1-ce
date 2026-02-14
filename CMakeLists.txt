@@ -68,6 +68,8 @@ target_sources(${EXECUTABLE_NAME} PUBLIC
     "src/game/critter.h"
     "src/game/cycle.cc"
     "src/game/cycle.h"
+    "src/game/cli.cc"
+    "src/game/cli.h"
     "src/game/display.cc"
     "src/game/display.h"
     "src/game/editor.cc"
