@@ -224,10 +224,6 @@ int select_character()
     while (!done) {
         sharedFpsLimiter.mark();
 
-#ifdef AGENT_BRIDGE
-        agentBridgeTick();
-#endif
-
         if (game_user_wants_to_quit != 0) {
             break;
         }

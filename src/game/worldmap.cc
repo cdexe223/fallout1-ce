@@ -875,6 +875,15 @@ static unsigned char WorldGrid[31][29];
 // 0x6713C4
 static unsigned char wwin_flag;
 
+// True only while world_map() is executing its modal UI loop/context.
+static bool gWorldmapActive;
+
+// 0x4AA100
+bool worldmap_is_active()
+{
+    return gWorldmapActive;
+}
+
 // 0x4AA110
 int init_world_map()
 {
@@ -1073,6 +1082,18 @@ int world_map(WorldMapContext ctx)
         our_section = ctx.section;
         break;
     }
+
+    struct WorldmapActiveGuard {
+        WorldmapActiveGuard()
+        {
+            gWorldmapActive = true;
+        }
+
+        ~WorldmapActiveGuard()
+        {
+            gWorldmapActive = false;
+        }
+    } worldmapActiveGuard;
 
     while (1) {
         if (InitWorldMapData() == -1) {

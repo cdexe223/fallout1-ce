@@ -355,10 +355,6 @@ static void main_game_loop()
     while (game_user_wants_to_quit == 0) {
         sharedFpsLimiter.mark();
 
-#ifdef AGENT_BRIDGE
-        agentBridgeTick();
-#endif
-
         int keyCode = get_input();
         game_handle_input(keyCode, false);
 

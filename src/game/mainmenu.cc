@@ -340,8 +340,6 @@ int main_menu_loop()
         sharedFpsLimiter.mark();
 
 #ifdef AGENT_BRIDGE
-        agentBridgeTick();
-
         if (gAgentMainMenuAction != 0) {
             switch (gAgentMainMenuAction) {
             case 1:

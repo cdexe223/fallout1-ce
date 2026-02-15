@@ -195,7 +195,6 @@ int gmovie_play(int game_movie, int game_movie_flags)
     int buttons;
     do {
 #ifdef AGENT_BRIDGE
-        agentBridgeTick();
         if (agentBridgeCheckMovieSkip()) {
             break;
         }
