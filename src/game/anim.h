@@ -158,6 +158,8 @@ void object_animate();
 int check_move(int* a1);
 int dude_move(int a1);
 int dude_run(int a1);
+int dude_move_to_tile(int tile, int actionPoints);
+int dude_run_to_tile(int tile, int actionPoints);
 void dude_fidget();
 void dude_stand(Object* obj, int rotation, int fid);
 void dude_standup(Object* a1);

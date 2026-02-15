@@ -3008,6 +3008,36 @@ int check_move(int* a1)
     return tile;
 }
 
+static int dude_move_to_tile_internal(int dest, int actionPoints, bool run)
+{
+    if (dest == -1) {
+        return -1;
+    }
+
+    if (run && !perk_level(PERK_SILENT_RUNNING)) {
+        pc_flag_off(PC_FLAG_SNEAKING);
+    }
+
+    register_begin(ANIMATION_REQUEST_RESERVED);
+    if (run) {
+        register_object_run_to_tile(obj_dude, dest, obj_dude->elevation, actionPoints, 0);
+    } else {
+        register_object_move_to_tile(obj_dude, dest, obj_dude->elevation, actionPoints, 0);
+    }
+
+    return register_end();
+}
+
+int dude_move_to_tile(int tile, int actionPoints)
+{
+    return dude_move_to_tile_internal(tile, actionPoints, false);
+}
+
+int dude_run_to_tile(int tile, int actionPoints)
+{
+    return dude_move_to_tile_internal(tile, actionPoints, true);
+}
+
 // 0x417A1C
 int dude_move(int action_points)
 {
@@ -3021,14 +3051,12 @@ int dude_move(int action_points)
     }
 
     if (lastDestination == dest) {
-        return dude_run(action_points);
+        return dude_run_to_tile(dest, action_points);
     }
 
     lastDestination = dest;
 
-    register_begin(ANIMATION_REQUEST_RESERVED);
-    register_object_move_to_tile(obj_dude, dest, obj_dude->elevation, action_points, 0);
-    return register_end();
+    return dude_move_to_tile(dest, action_points);
 }
 
 // 0x417A5C
@@ -3041,13 +3069,7 @@ int dude_run(int action_points)
         return -1;
     }
 
-    if (!perk_level(PERK_SILENT_RUNNING)) {
-        pc_flag_off(PC_FLAG_SNEAKING);
-    }
-
-    register_begin(ANIMATION_REQUEST_RESERVED);
-    register_object_run_to_tile(obj_dude, dest, obj_dude->elevation, action_points, 0);
-    return register_end();
+    return dude_run_to_tile(dest, action_points);
 }
 
 // 0x417AB0

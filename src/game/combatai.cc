@@ -1579,35 +1579,52 @@ bool is_within_perception(Object* critter1, Object* critter2)
     int distance;
     int perception;
     int max_distance;
+    bool inCombat;
+    bool targetIsSneakingDude;
+
+    // set_light_level(40) maps to this ambient intensity in script-driven dark caves.
+    static constexpr int kDarkCaveAmbientLight = LIGHT_LEVEL_MAX * 40 / 100;
+    static constexpr int kDarkCaveMinDetectionDistance = 2;
 
     distance = obj_dist(critter2, critter1);
     perception = stat_level(critter1, STAT_PERCEPTION);
+    inCombat = isInCombat();
+    targetIsSneakingDude = critter2 == obj_dude && is_pc_sneak_working();
     if (can_see(critter1, critter2)) {
         max_distance = perception * 5;
         if ((critter2->flags & OBJECT_TRANS_GLASS) != 0) {
             max_distance /= 2;
         }
 
-        if (critter2 == obj_dude) {
-            if (is_pc_sneak_working()) {
-                max_distance /= 4;
-            }
+        if (targetIsSneakingDude) {
+            max_distance /= 4;
+        }
+
+        if (max_distance < 1) {
+            max_distance = 1;
         }
 
         if (distance <= max_distance) {
             return true;
         }
     } else {
-        if (isInCombat()) {
+        if (inCombat) {
             max_distance = perception * 2;
         } else {
             max_distance = perception;
         }
 
-        if (critter2 == obj_dude) {
-            if (is_pc_sneak_working()) {
-                max_distance /= 4;
-            }
+        if (targetIsSneakingDude) {
+            max_distance /= 4;
+        }
+
+        if (max_distance < 1) {
+            max_distance = 1;
+        }
+
+        // Preserve short-range awareness in dark caves where scripts set low ambient light.
+        if (!inCombat && !targetIsSneakingDude && light_get_ambient() <= kDarkCaveAmbientLight && max_distance < kDarkCaveMinDetectionDistance) {
+            max_distance = kDarkCaveMinDetectionDistance;
         }
 
         if (distance <= max_distance) {

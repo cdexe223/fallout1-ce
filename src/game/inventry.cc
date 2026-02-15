@@ -1907,6 +1907,15 @@ Object* inven_get_container_target()
     return target_stack[target_curr_stack];
 }
 
+int inven_get_window_type()
+{
+    if (!inven_is_initialized) {
+        return -1;
+    }
+
+    return inven_window_type;
+}
+
 // 0x4643EC
 void inven_set_mouse(int cursor)
 {
@@ -2430,7 +2439,7 @@ Object* inven_right_hand(Object* critter)
     Inventory* inventory;
     Object* item;
 
-    if (i_rhand != NULL && critter == inven_dude) {
+    if (inven_is_initialized && i_rhand != NULL && critter == inven_dude) {
         return i_rhand;
     }
 
@@ -2452,7 +2461,7 @@ Object* inven_left_hand(Object* critter)
     Inventory* inventory;
     Object* item;
 
-    if (i_lhand != NULL && critter == inven_dude) {
+    if (inven_is_initialized && i_lhand != NULL && critter == inven_dude) {
         return i_lhand;
     }
 
@@ -2474,7 +2483,7 @@ Object* inven_worn(Object* critter)
     Inventory* inventory;
     Object* item;
 
-    if (i_worn != NULL && critter == inven_dude) {
+    if (inven_is_initialized && i_worn != NULL && critter == inven_dude) {
         return i_worn;
     }
 

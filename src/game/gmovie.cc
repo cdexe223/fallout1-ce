@@ -117,6 +117,15 @@ int gmovie_play(int game_movie, int game_movie_flags)
         return -1;
     }
 
+#ifdef AGENT_BRIDGE
+    // Agent bridge runs headless. Mark the movie as played and skip playback.
+    // Emit one forced movie-context bridge tick so external agents can observe
+    // that a movie was triggered before context returns to normal flow.
+    gmovie_played_list[game_movie] = 1;
+    agentBridgePulseMovieContext();
+    return 0;
+#endif
+
     if ((game_movie_flags & GAME_MOVIE_FADE_IN) != 0) {
         palette_fade_to(black_palette);
     }
