@@ -28,6 +28,12 @@ void KillOldMaps();
 int MapDirErase(const char* path, const char* a2);
 int MapDirEraseFile(const char* a1, const char* a2);
 
+// Agent bridge helpers for non-interactive save/load.
+int agentLoadSaveSaveToSlot(int slot, const char* description);
+int agentLoadSaveLoadFromSlot(int slot);
+int agentLoadSaveQuickSave(const char* description);
+int agentLoadSaveQuickLoad();
+
 } // namespace fallout
 
 #endif /* FALLOUT_GAME_LOADSAVE_H_ */

@@ -45,6 +45,10 @@
 #include "plib/gnw/svga.h"
 #include "plib/gnw/text.h"
 
+#ifdef AGENT_BRIDGE
+#include "agent_bridge.h"
+#endif
+
 namespace fallout {
 
 #define DEATH_WINDOW_WIDTH 640
@@ -122,6 +126,9 @@ int gnw_main(int argc, char** argv)
             case MAIN_MENU_NEW_GAME:
                 main_menu_hide(true);
                 main_menu_destroy();
+#ifdef AGENT_BRIDGE
+                agentBridgeSetContext(AGENT_CONTEXT_CHAR_SELECTOR);
+#endif
                 if (select_character() == 2) {
                     gmovie_play(MOVIE_OVRINTRO, GAME_MOVIE_STOP_MUSIC);
                     roll_set_seed(-1);
@@ -141,6 +148,10 @@ int gnw_main(int argc, char** argv)
                     }
                 }
 
+#ifdef AGENT_BRIDGE
+                agentBridgeSetContext(AGENT_CONTEXT_MAIN_MENU);
+#endif
+
                 main_menu_create();
 
                 break;
@@ -156,7 +167,17 @@ int gnw_main(int argc, char** argv)
 
                     loadColorTable("color.pal");
                     palette_fade_to(cmap);
-                    int loadGameRc = LoadGame(LOAD_SAVE_MODE_FROM_MAIN_MENU);
+                    int loadGameRc = -1;
+#ifdef AGENT_BRIDGE
+                    if (gAgentPendingLoadSlot >= 0 && gAgentPendingLoadSlot < 10) {
+                        loadGameRc = agentLoadSaveLoadFromSlot(gAgentPendingLoadSlot);
+                        gAgentPendingLoadSlot = -1;
+                    } else {
+                        loadGameRc = LoadGame(LOAD_SAVE_MODE_FROM_MAIN_MENU);
+                    }
+#else
+                    loadGameRc = LoadGame(LOAD_SAVE_MODE_FROM_MAIN_MENU);
+#endif
                     if (loadGameRc == -1) {
                         debug_printf("\n ** Error running LoadGame()! **\n");
                     } else if (loadGameRc != 0) {
@@ -227,6 +248,10 @@ static bool main_init_system(int argc, char** argv)
         return false;
     }
 
+#ifdef AGENT_BRIDGE
+    agentBridgeInit();
+#endif
+
     // NOTE: Uninline.
     main_selfrun_init();
 
@@ -248,6 +273,10 @@ static void main_exit_system()
 
     // NOTE: Uninline.
     main_selfrun_exit();
+
+#ifdef AGENT_BRIDGE
+    agentBridgeExit();
+#endif
 
     game_exit();
 
@@ -310,6 +339,10 @@ static void main_unload_new()
 // 0x472A54
 static void main_game_loop()
 {
+#ifdef AGENT_BRIDGE
+    agentBridgeSetContext(AGENT_CONTEXT_GAMEPLAY);
+#endif
+
     bool cursorWasHidden = mouse_hidden();
     if (cursorWasHidden) {
         mouse_show();
@@ -321,6 +354,10 @@ static void main_game_loop()
 
     while (game_user_wants_to_quit == 0) {
         sharedFpsLimiter.mark();
+
+#ifdef AGENT_BRIDGE
+        agentBridgeTick();
+#endif
 
         int keyCode = get_input();
         game_handle_input(keyCode, false);

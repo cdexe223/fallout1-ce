@@ -21,6 +21,10 @@
 #include "plib/gnw/text.h"
 #include "plib/gnw/touch.h"
 
+#ifdef AGENT_BRIDGE
+#include "agent_bridge.h"
+#endif
+
 namespace fallout {
 
 #define GAME_MOVIE_WINDOW_WIDTH 640
@@ -190,6 +194,13 @@ int gmovie_play(int game_movie, int game_movie_flags)
     int v11 = 0;
     int buttons;
     do {
+#ifdef AGENT_BRIDGE
+        agentBridgeTick();
+        if (agentBridgeCheckMovieSkip()) {
+            break;
+        }
+#endif
+
         if (!moviePlaying() || game_user_wants_to_quit || get_input() != -1) {
             break;
         }

@@ -22,6 +22,16 @@ set(CMAKE_CXX_EXTENSIONS NO)
 
 option(ASAN "Enable address sanitizer" OFF)
 option(UBSAN "Enable undefined behaviour sanitizer" OFF)
+option(AGENT_BRIDGE "Enable Fallout 1 SDK agent bridge integration" OFF)
+
+if(AGENT_BRIDGE)
+    include(FetchContent)
+    FetchContent_Declare(
+        nlohmann_json
+        URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
+    )
+    FetchContent_MakeAvailable(nlohmann_json)
+endif()
 
 if (ANDROID)
     add_library(${EXECUTABLE_NAME} SHARED)
@@ -39,6 +49,10 @@ if(UBSAN)
 endif()
 
 target_include_directories(${EXECUTABLE_NAME} PUBLIC src)
+if(AGENT_BRIDGE)
+    target_include_directories(${EXECUTABLE_NAME} PUBLIC "${CMAKE_SOURCE_DIR}/../../src")
+    target_compile_definitions(${EXECUTABLE_NAME} PRIVATE AGENT_BRIDGE=1)
+endif()
 
 target_sources(${EXECUTABLE_NAME} PUBLIC
     "src/game/actions.cc"
@@ -258,6 +272,15 @@ target_sources(${EXECUTABLE_NAME} PUBLIC
     "src/movie_lib.cc"
     "src/movie_lib.h"
 )
+
+if(AGENT_BRIDGE)
+    target_sources(${EXECUTABLE_NAME} PUBLIC
+        "../../src/agent_bridge.cc"
+        "../../src/agent_state.cc"
+        "../../src/agent_commands.cc"
+    )
+    target_link_libraries(${EXECUTABLE_NAME} nlohmann_json::nlohmann_json)
+endif()
 
 target_sources(${EXECUTABLE_NAME} PUBLIC
     "src/audio_engine.cc"

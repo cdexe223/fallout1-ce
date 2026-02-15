@@ -1591,6 +1591,87 @@ int isLoadingGame()
     return loadingGame;
 }
 
+int agentLoadSaveSaveToSlot(int slot, const char* description)
+{
+    if (slot < 0 || slot >= 10) {
+        return -1;
+    }
+
+    if (!config_get_string(&game_config, GAME_CONFIG_SYSTEM_KEY, GAME_CONFIG_MASTER_PATCHES_KEY, &patches)) {
+        patches = emgpath;
+    }
+
+    slot_cursor = slot;
+
+    memset(LSData[slot].description, 0, sizeof(LSData[slot].description));
+    if (description != nullptr && description[0] != '\0') {
+        strncpy(LSData[slot].description, description, sizeof(LSData[slot].description) - 1);
+    } else {
+        snprintf(LSData[slot].description, sizeof(LSData[slot].description), "Slot %d", slot + 1);
+    }
+
+    thumbnail_image[1] = NULL;
+    if (QuickSnapShot() != 1) {
+        if (thumbnail_image[1] != NULL) {
+            mem_free(snapshot);
+            thumbnail_image[1] = NULL;
+        }
+        return -1;
+    }
+
+    int rc = SaveSlot();
+
+    if (thumbnail_image[1] != NULL) {
+        mem_free(snapshot);
+        thumbnail_image[1] = NULL;
+    }
+
+    if (rc == 0) {
+        quick_done = true;
+    }
+
+    return rc;
+}
+
+int agentLoadSaveLoadFromSlot(int slot)
+{
+    if (slot < 0 || slot >= 10) {
+        return -1;
+    }
+
+    if (!config_get_string(&game_config, GAME_CONFIG_SYSTEM_KEY, GAME_CONFIG_MASTER_PATCHES_KEY, &patches)) {
+        patches = emgpath;
+    }
+
+    slot_cursor = slot;
+
+    if (GetSlotList() == -1) {
+        return -1;
+    }
+
+    if (LSstatus[slot] != SLOT_STATE_OCCUPIED) {
+        return -1;
+    }
+
+    return LoadSlot(slot);
+}
+
+int agentLoadSaveQuickSave(const char* description)
+{
+    if (slot_cursor < 0 || slot_cursor >= 10) {
+        slot_cursor = 0;
+    }
+    return agentLoadSaveSaveToSlot(slot_cursor, description);
+}
+
+int agentLoadSaveQuickLoad()
+{
+    if (slot_cursor < 0 || slot_cursor >= 10) {
+        slot_cursor = 0;
+    }
+    return agentLoadSaveLoadFromSlot(slot_cursor);
+}
+
 // 0x46FCCC
 static int LoadSlot(int slot)
 {

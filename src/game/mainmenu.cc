@@ -18,6 +18,10 @@
 #include "plib/gnw/svga.h"
 #include "plib/gnw/text.h"
 
+#ifdef AGENT_BRIDGE
+#include "agent_bridge.h"
+#endif
+
 namespace fallout {
 
 #define MAIN_MENU_WINDOW_WIDTH 640
@@ -320,6 +324,10 @@ int main_menu_loop()
 {
     in_main_menu = true;
 
+#ifdef AGENT_BRIDGE
+    agentBridgeSetContext(AGENT_CONTEXT_MAIN_MENU);
+#endif
+
     bool oldCursorIsHidden = mouse_hidden();
     if (oldCursorIsHidden) {
         mouse_show();
@@ -330,6 +338,33 @@ int main_menu_loop()
     int rc = -1;
     while (rc == -1) {
         sharedFpsLimiter.mark();
+
+#ifdef AGENT_BRIDGE
+        agentBridgeTick();
+
+        if (gAgentMainMenuAction != 0) {
+            switch (gAgentMainMenuAction) {
+            case 1:
+                rc = MAIN_MENU_NEW_GAME;
+                break;
+            case 2:
+                rc = MAIN_MENU_LOAD_GAME;
+                break;
+            case 3:
+                rc = MAIN_MENU_CREDITS;
+                break;
+            case 4:
+                rc = MAIN_MENU_EXIT;
+                break;
+            default:
+                break;
+            }
+            gAgentMainMenuAction = 0;
+            if (rc != -1) {
+                break;
+            }
+        }
+#endif
 
         int keyCode = get_input();
 
