@@ -1653,7 +1653,8 @@ int agentLoadSaveLoadFromSlot(int slot)
         return -1;
     }
 
-    return LoadSlot(slot);
+    int rc = LoadSlot(slot);
+    return (rc == 0) ? 1 : rc;
 }
 
 int agentLoadSaveQuickSave(const char* description)
