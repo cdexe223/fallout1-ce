@@ -157,9 +157,26 @@ int world_map(WorldMapContext ctx);
 WorldMapContext town_map(WorldMapContext ctx);
 void KillWorldWin();
 int worldmap_script_jump(int city, int a2);
+int worldmap_walk_to_coords(int x, int y);
+int worldmap_enter_area_entrance(int area, int entrance);
 int xlate_mapidx_to_town(int map_idx);
 int PlayCityMapMusic();
 bool worldmap_is_active();
+bool worldmap_is_walking();
+int worldmap_get_area_count();
+bool worldmap_area_is_known(int area);
+int worldmap_area_visited_state(int area);
+void worldmap_area_set_visible_state(int area, int state, bool visible);
+void worldmap_map_mark_entrance_state(int map, int elevation, int state);
+void worldmap_area_mark_visited_state(int area, int state);
+int worldmap_teleport_to_area(int area);
+int worldmap_get_party_cur_area();
+void worldmap_get_party_world_pos(int* x, int* y);
+void worldmap_get_walk_destination(int* x, int* y);
+int worldmap_get_area_name(int area, char* name, int nameCapacity);
+int worldmap_get_area_info(int area, char* name, int nameCapacity, int* x, int* y, int* state, int* size);
+int worldmap_get_area_entrance_count(int area);
+int worldmap_get_area_entrance(int area, int entrance, int* mapIdx, int* elev, int* tile, int* state);
 
 } // namespace fallout
 

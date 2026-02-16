@@ -111,6 +111,8 @@ static void UnregTMAPsels(int count);
 static void DrawTMAPsels(int win, int city);
 static void CalcTimeAdder();
 static void BlackOut();
+static bool worldmapIsValidArea(int area);
+static bool worldmapIsValidEntrance(int area, int entrance);
 
 // 0x4A9330
 static const unsigned char mouse_table1[3][3][2] = {
@@ -380,6 +382,22 @@ static const CityLocationEntry city_location[TOWN_COUNT] = {
     /*      THE GLOW */ { 24, 25 },
     /*      BONEYARD */ { 15, 18 },
     /*     CATHEDRAL */ { 15, 20 },
+};
+
+// 0x4A9E84
+static const char* kAreaNames[TOWN_COUNT] = {
+    "Vault 13",
+    "Vault 15",
+    "Shady Sands",
+    "Junktown",
+    "Raiders",
+    "Necropolis",
+    "The Hub",
+    "Brotherhood of Steel",
+    "Military Base",
+    "The Glow",
+    "Boneyard",
+    "Cathedral",
 };
 
 // 0x4A9E94
@@ -877,6 +895,22 @@ static unsigned char wwin_flag;
 
 // True only while world_map() is executing its modal UI loop/context.
 static bool gWorldmapActive;
+static bool gAgentWmForceExit = false;
+
+static bool worldmapIsValidArea(int area)
+{
+    return area >= 0 && area < TOWN_COUNT;
+}
+
+static bool worldmapIsValidEntrance(int area, int entrance)
+{
+    if (!worldmapIsValidArea(area) || entrance < 0 || entrance >= 7) {
+        return false;
+    }
+
+    const TownHotSpotEntry* entry = &(TownHotSpots[area][entrance]);
+    return entry->x != 0 && entry->y != 0 && entry->name[0] != '\0';
+}
 
 // 0x4AA100
 bool worldmap_is_active()
@@ -1176,6 +1210,12 @@ int world_map(WorldMapContext ctx)
             time = get_time();
             input = get_input();
             mouseGetPositionInWindow(world_win, &mouse_x, &mouse_y);
+
+            if (gAgentWmForceExit) {
+                gAgentWmForceExit = false;
+                done = 1;
+                break;
+            }
 
             mouse_dx = abs(mouse_x - (world_xpos - viewport_x + 22));
             mouse_dy = abs(mouse_y - (world_ypos - viewport_y + 20));
@@ -3735,6 +3775,402 @@ int worldmap_script_jump(int city, int a2)
     }
 
     return 0;
+}
+
+int worldmap_walk_to_coords(int x, int y)
+{
+    int rc;
+    int moveCounter;
+
+    if (x < 0) {
+        x = 0;
+    } else if (x >= WM_WORLDMAP_WIDTH) {
+        x = WM_WORLDMAP_WIDTH - 1;
+    }
+
+    if (y < 0) {
+        y = 0;
+    } else if (y >= 1500) {
+        y = 1499;
+    }
+
+    target_xpos = x;
+    target_ypos = y;
+    world_move_init();
+    CalcTimeAdder();
+
+    wmap_mile = 0;
+    moveCounter = 0;
+    rc = 0;
+
+    while (rc == 0) {
+        switch (WorldTerraTable[world_ypos / 50][world_xpos / 50]) {
+        case TERRAIN_TYPE_MOUNTAIN:
+            moveCounter--;
+            if (moveCounter <= 0) {
+                moveCounter = 2;
+                rc = world_move_step();
+            }
+            inc_game_time(time_adder);
+            break;
+        case TERRAIN_TYPE_CITY:
+            rc = world_move_step();
+            moveCounter--;
+            if (moveCounter <= 0 && rc == 0) {
+                moveCounter = 4;
+                rc = world_move_step();
+            }
+            break;
+        default:
+            rc = world_move_step();
+            moveCounter = 0;
+            inc_game_time(time_adder);
+            break;
+        }
+
+        wmap_mile++;
+        if (wmap_mile >= wmap_day) {
+            wmap_mile = 0;
+            partyMemberRestingHeal(24);
+        }
+    }
+
+    return 0;
+}
+
+int worldmap_enter_area_entrance(int area, int entrance)
+{
+    if (!worldmapIsValidEntrance(area, entrance)) {
+        return -1;
+    }
+
+    TownHotSpotEntry* entry = &(TownHotSpots[area][entrance]);
+
+    // Keep world map metadata in sync with direct programmatic entry.
+    world_xpos = 50 * city_location[area].column + 50 / 2;
+    world_ypos = 50 * city_location[area].row + 50 / 2;
+    our_town = area;
+    our_section = entrance;
+    first_visit_flag |= 1 << area;
+    game_global_vars[cityXgvar[area]] = 1;
+    TwnSelKnwFlag[area][entrance] = 1;
+    if (ElevXgvar[area][entrance] != 0) {
+        game_global_vars[ElevXgvar[area][entrance]] = 1;
+    }
+
+    if (gWorldmapActive) {
+        for (int index = 0; index < TOWN_COUNT; index++) {
+            win_disable_button(TownBttns[index]);
+        }
+        win_disable_button(WrldToggle);
+    }
+
+    int rc = LoadTownMap(entry->name, entry->map_idx);
+    if (rc == 0 && gWorldmapActive) {
+        gAgentWmForceExit = true;
+    }
+
+    return rc;
+}
+
+bool worldmap_is_walking()
+{
+    return false;
+}
+
+int worldmap_get_area_count()
+{
+    return TOWN_COUNT;
+}
+
+bool worldmap_area_is_known(int area)
+{
+    int entrance;
+
+    if (!worldmapIsValidArea(area)) {
+        return false;
+    }
+
+    if (area == TOWN_VAULT_13) {
+        return true;
+    }
+
+    if ((first_visit_flag & (1 << area)) != 0) {
+        return true;
+    }
+
+    if (game_global_vars[cityXgvar[area]] != 0) {
+        return true;
+    }
+
+    for (entrance = 0; entrance < 7; entrance++) {
+        if (!worldmapIsValidEntrance(area, entrance)) {
+            break;
+        }
+        if (TwnSelKnwFlag[area][entrance] != 0) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+int worldmap_area_visited_state(int area)
+{
+    if (!worldmapIsValidArea(area)) {
+        return 0;
+    }
+
+    return (first_visit_flag & (1 << area)) != 0 ? 1 : 0;
+}
+
+void worldmap_area_set_visible_state(int area, int state, bool visible)
+{
+    int entrance;
+
+    if (!worldmapIsValidArea(area)) {
+        return;
+    }
+
+    (void)state;
+
+    if (area == TOWN_VAULT_13) {
+        visible = true;
+    }
+
+    if (visible) {
+        first_visit_flag |= 1 << area;
+        game_global_vars[cityXgvar[area]] = 1;
+        if (WorldGrid[city_location[area].row][city_location[area].column] == 0) {
+            WorldGrid[city_location[area].row][city_location[area].column] = 1;
+        }
+        if (worldmapIsValidEntrance(area, 0)) {
+            TwnSelKnwFlag[area][0] = 1;
+            if (ElevXgvar[area][0] != 0) {
+                game_global_vars[ElevXgvar[area][0]] = 1;
+            }
+        }
+    } else {
+        first_visit_flag &= ~(1 << area);
+        game_global_vars[cityXgvar[area]] = 0;
+        for (entrance = 0; entrance < 7; entrance++) {
+            if (!worldmapIsValidEntrance(area, entrance)) {
+                break;
+            }
+            TwnSelKnwFlag[area][entrance] = 0;
+            if (ElevXgvar[area][entrance] != 0) {
+                game_global_vars[ElevXgvar[area][entrance]] = 0;
+            }
+        }
+    }
+}
+
+void worldmap_map_mark_entrance_state(int map, int elevation, int state)
+{
+    int area;
+    int entrance;
+    int known;
+    const char* mapName;
+
+    known = state != 0 ? 1 : 0;
+    if (map < 0 || map >= MAP_COUNT) {
+        return;
+    }
+
+    mapName = map_get_elev_idx(map, elevation >= 0 ? elevation : 0);
+    if (mapName == NULL) {
+        return;
+    }
+
+    for (area = 0; area < TOWN_COUNT; area++) {
+        for (entrance = 0; entrance < 7; entrance++) {
+            if (!worldmapIsValidEntrance(area, entrance)) {
+                break;
+            }
+
+            if (strcmp(TownHotSpots[area][entrance].name, mapName) != 0) {
+                continue;
+            }
+
+            TwnSelKnwFlag[area][entrance] = known;
+            if (ElevXgvar[area][entrance] != 0) {
+                game_global_vars[ElevXgvar[area][entrance]] = known;
+            }
+            if (known) {
+                worldmap_area_set_visible_state(area, 1, true);
+            }
+        }
+    }
+}
+
+void worldmap_area_mark_visited_state(int area, int state)
+{
+    if (!worldmapIsValidArea(area)) {
+        return;
+    }
+
+    if (state != 0) {
+        worldmap_area_set_visible_state(area, 1, true);
+    } else {
+        worldmap_area_set_visible_state(area, 1, false);
+    }
+}
+
+int worldmap_teleport_to_area(int area)
+{
+    if (!worldmapIsValidArea(area)) {
+        return -1;
+    }
+
+    world_xpos = 50 * city_location[area].column + 50 / 2;
+    world_ypos = 50 * city_location[area].row + 50 / 2;
+    our_town = area;
+    return 0;
+}
+
+int worldmap_get_party_cur_area()
+{
+    return InCity(world_xpos, world_ypos);
+}
+
+void worldmap_get_party_world_pos(int* x, int* y)
+{
+    if (x != NULL) {
+        *x = world_xpos;
+    }
+
+    if (y != NULL) {
+        *y = world_ypos;
+    }
+}
+
+void worldmap_get_walk_destination(int* x, int* y)
+{
+    if (x != NULL) {
+        *x = target_xpos;
+    }
+
+    if (y != NULL) {
+        *y = target_ypos;
+    }
+}
+
+int worldmap_get_area_name(int area, char* name, int nameCapacity)
+{
+    if (name == NULL || nameCapacity <= 0) {
+        return -1;
+    }
+
+    name[0] = '\0';
+    if (!worldmapIsValidArea(area)) {
+        return -1;
+    }
+
+    snprintf(name, nameCapacity, "%s", kAreaNames[area]);
+    return 0;
+}
+
+int worldmap_get_area_info(int area, char* name, int nameCapacity, int* x, int* y, int* state, int* size)
+{
+    if (!worldmapIsValidArea(area)) {
+        if (name != NULL && nameCapacity > 0) {
+            name[0] = '\0';
+        }
+        if (x != NULL) {
+            *x = 0;
+        }
+        if (y != NULL) {
+            *y = 0;
+        }
+        if (state != NULL) {
+            *state = 0;
+        }
+        if (size != NULL) {
+            *size = 0;
+        }
+        return -1;
+    }
+
+    worldmap_get_area_name(area, name, nameCapacity);
+
+    if (x != NULL) {
+        *x = 50 * city_location[area].column + 50 / 2;
+    }
+    if (y != NULL) {
+        *y = 50 * city_location[area].row + 50 / 2;
+    }
+    if (state != NULL) {
+        *state = worldmap_area_is_known(area) ? 1 : 0;
+    }
+    if (size != NULL) {
+        *size = 1;
+    }
+
+    return 0;
+}
+
+int worldmap_get_area_entrance_count(int area)
+{
+    int entrance;
+
+    if (!worldmapIsValidArea(area)) {
+        return 0;
+    }
+
+    for (entrance = 0; entrance < 7; entrance++) {
+        if (!worldmapIsValidEntrance(area, entrance)) {
+            break;
+        }
+    }
+
+    return entrance;
+}
+
+int worldmap_get_area_entrance(int area, int entrance, int* mapIdx, int* elev, int* tile, int* state)
+{
+    TownHotSpotEntry* entry;
+    int mapIndex;
+    int entranceKnown;
+
+    if (!worldmapIsValidEntrance(area, entrance)) {
+        if (mapIdx != NULL) {
+            *mapIdx = -1;
+        }
+        if (elev != NULL) {
+            *elev = -1;
+        }
+        if (tile != NULL) {
+            *tile = -1;
+        }
+        if (state != NULL) {
+            *state = 0;
+        }
+        return -1;
+    }
+
+    entry = &(TownHotSpots[area][entrance]);
+    mapIndex = map_match_map_name(entry->name);
+
+    if (mapIdx != NULL) {
+        *mapIdx = mapIndex;
+    }
+    if (elev != NULL) {
+        *elev = -1;
+    }
+    if (tile != NULL) {
+        // Fallout 1 stores entrance routing in `map_idx` (GVAR_LOAD_MAP_INDEX).
+        *tile = entry->map_idx;
+    }
+    entranceKnown = TwnSelKnwFlag[area][entrance] != 0 ? 1 : 0;
+    if (ElevXgvar[area][entrance] != 0 && game_global_vars[ElevXgvar[area][entrance]] != 0) {
+        entranceKnown = 1;
+        TwnSelKnwFlag[area][entrance] = 1;
+    }
+    if (state != NULL) {
+        *state = entranceKnown;
+    }
+
+    return mapIndex >= 0 ? 0 : -1;
 }
 
 // 0x4AEA88
