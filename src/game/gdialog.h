@@ -31,6 +31,7 @@ int scr_dialogue_init(int headFid, int reaction);
 int scr_dialogue_exit();
 void gdialog_set_background(int a1);
 void gdialog_display_msg(char* msg);
+void gdialog_refresh_world();
 const char* gdialog_get_reply_text();
 int gdialog_get_option_count();
 const char* gdialog_get_option_text(int index);

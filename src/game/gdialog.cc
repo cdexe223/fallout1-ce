@@ -602,6 +602,24 @@ bool dialog_active()
     return dialog_state_fix != 0;
 }
 
+void gdialog_refresh_world()
+{
+    if (gdialog_state != 1 || dialogue_state != 1) {
+        return;
+    }
+
+    if (dialogueBackWindow == -1 || headWindowBuffer == NULL) {
+        return;
+    }
+
+    // Only refresh the world snapshot path used by no-head dialogue.
+    if (fidgetFp != NULL) {
+        return;
+    }
+
+    talk_to_display_frame(NULL, 0);
+}
+
 // 0x43DE28
 void gdialog_enter(Object* target, int a2)
 {

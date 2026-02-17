@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "game/gconfig.h"
+#include "game/gdialog.h"
 #include "game/object.h"
 #include "game/tile.h"
 #include "game/wordwrap.h"
@@ -401,6 +402,7 @@ static void text_object_bk()
 
     if (textObjectsRemoved) {
         tile_refresh_rect(&dirtyRect, map_elevation);
+        gdialog_refresh_world();
     }
 }
 
