@@ -1506,6 +1506,28 @@ int intface_get_current_item(Object** itemPtr)
     return 0;
 }
 
+// 0x454F34
+int intface_get_item_in_hand(int hand, Object** itemPtr)
+{
+    if (itemPtr == NULL) {
+        return -1;
+    }
+
+    if (hand < HAND_LEFT || hand >= HAND_COUNT) {
+        *itemPtr = NULL;
+        return -1;
+    }
+
+    Object* item = itemButtonItems[hand].item;
+    if (item == reinterpret_cast<Object*>(-1)) {
+        *itemPtr = NULL;
+        return -1;
+    }
+
+    *itemPtr = item;
+    return 0;
+}
+
 // 0x454F50
 int intface_update_ammo_lights()
 {

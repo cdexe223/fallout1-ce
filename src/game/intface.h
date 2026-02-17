@@ -53,6 +53,7 @@ int intface_toggle_item_state();
 void intface_use_item();
 int intface_is_item_right_hand();
 int intface_get_current_item(Object** itemPtr);
+int intface_get_item_in_hand(int hand, Object** itemPtr);
 int intface_update_ammo_lights();
 void intface_end_window_open(bool animated);
 void intface_end_window_close(bool animated);
