@@ -34,6 +34,7 @@ void gdialog_display_msg(char* msg);
 const char* gdialog_get_reply_text();
 int gdialog_get_option_count();
 const char* gdialog_get_option_text(int index);
+unsigned int gdialog_get_state_version();
 void gdialog_highlight_option(int index);
 int gDialogStart();
 int gDialogSayMessage();
