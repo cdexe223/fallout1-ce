@@ -988,6 +988,35 @@ void gdialog_display_msg(char* msg)
     win_draw(gReplyWin);
 }
 
+// Bridge helpers used by external state serialization.
+const char* gdialog_get_reply_text()
+{
+    return dialogBlock.replyText;
+}
+
+int gdialog_get_option_count()
+{
+    return gdNumOptions;
+}
+
+const char* gdialog_get_option_text(int index)
+{
+    if (index < 0 || index >= gdNumOptions) {
+        return "";
+    }
+
+    return dialogBlock.options[index].text;
+}
+
+void gdialog_highlight_option(int index)
+{
+    if (index < 0 || index >= gdNumOptions) {
+        return;
+    }
+
+    gDialogProcessHighlight(index);
+}
+
 // 0x43E5E4
 int gDialogStart()
 {
