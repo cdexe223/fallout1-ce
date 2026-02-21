@@ -895,6 +895,9 @@ static unsigned char wwin_flag;
 
 // True only while world_map() is executing its modal UI loop/context.
 static bool gWorldmapActive;
+static bool gWorldmapTownmapActive = false;
+static int gWorldmapTownmapArea = -1;
+static int gAgentTownmapPendingEntrance = -1;
 static bool gAgentWmForceExit = false;
 
 static bool worldmapIsValidArea(int area)
@@ -916,6 +919,39 @@ static bool worldmapIsValidEntrance(int area, int entrance)
 bool worldmap_is_active()
 {
     return gWorldmapActive;
+}
+
+bool worldmap_is_town_map_active()
+{
+    return gWorldmapTownmapActive;
+}
+
+int worldmap_get_town_map_area()
+{
+    return gWorldmapTownmapActive ? gWorldmapTownmapArea : -1;
+}
+
+int worldmap_town_map_select_entrance(int entrance)
+{
+    int area = gWorldmapTownmapArea;
+    if (!gWorldmapTownmapActive
+        || !worldmapIsValidArea(area)
+        || !worldmapIsValidEntrance(area, entrance)) {
+        return -1;
+    }
+
+    int entranceKnown = TwnSelKnwFlag[area][entrance] != 0 ? 1 : 0;
+    if (ElevXgvar[area][entrance] != 0 && game_global_vars[ElevXgvar[area][entrance]] != 0) {
+        entranceKnown = 1;
+        TwnSelKnwFlag[area][entrance] = 1;
+    }
+
+    if (entranceKnown == 0) {
+        return -1;
+    }
+
+    gAgentTownmapPendingEntrance = entrance;
+    return 0;
 }
 
 // 0x4AA110
@@ -3443,8 +3479,45 @@ WorldMapContext town_map(WorldMapContext ctx)
     cycle_disable();
     gmouse_set_cursor(MOUSE_CURSOR_ARROW);
 
+    struct TownmapActiveGuard {
+        explicit TownmapActiveGuard(int town)
+        {
+            gWorldmapTownmapActive = true;
+            gWorldmapTownmapArea = town;
+            gAgentTownmapPendingEntrance = -1;
+        }
+
+        ~TownmapActiveGuard()
+        {
+            gWorldmapTownmapActive = false;
+            gWorldmapTownmapArea = -1;
+            gAgentTownmapPendingEntrance = -1;
+        }
+    } townmapActiveGuard(ctx.town);
+
     while (new_ctx.state == -1) {
         sharedFpsLimiter.mark();
+
+        if (gAgentTownmapPendingEntrance >= 0) {
+            int entrance = gAgentTownmapPendingEntrance;
+            gAgentTownmapPendingEntrance = -1;
+
+            if (worldmapIsValidEntrance(ctx.town, entrance)) {
+                int entranceKnown = TwnSelKnwFlag[ctx.town][entrance] != 0 ? 1 : 0;
+                if (ElevXgvar[ctx.town][entrance] != 0
+                    && game_global_vars[ElevXgvar[ctx.town][entrance]] != 0) {
+                    entranceKnown = 1;
+                    TwnSelKnwFlag[ctx.town][entrance] = 1;
+                }
+
+                if (entranceKnown != 0) {
+                    new_ctx.state = 2;
+                    new_ctx.town = ctx.town;
+                    new_ctx.section = entrance;
+                    continue;
+                }
+            }
+        }
 
         time = get_time();
         input = get_input();
@@ -3452,6 +3525,7 @@ WorldMapContext town_map(WorldMapContext ctx)
         if (input >= 500 && input < 512) {
             if ((first_visit_flag & (1 << (input - 500))) != 0) {
                 ctx.town = input - 500;
+                gWorldmapTownmapArea = ctx.town;
                 UnregTMAPsels(tmap_sels_count);
                 art_ptr_unlock(tmap_pic_key);
 

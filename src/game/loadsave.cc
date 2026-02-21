@@ -252,6 +252,8 @@ static LoadGameHandler* master_load_list[LOAD_SAVE_HANDLER_COUNT] = {
 
 // 0x505A68
 static int loadingGame = 0;
+static bool gAgentLoadScreenActive = false;
+static int gAgentPendingLoadScreenSlot = -1;
 
 // 0x612260
 static Size ginfo[LOAD_SAVE_FRM_COUNT];
@@ -973,6 +975,20 @@ int LoadGame(int mode)
     win_draw(lsgwin);
     dbleclkcntr = 24;
 
+    struct AgentLoadScreenGuard {
+        AgentLoadScreenGuard()
+        {
+            gAgentLoadScreenActive = true;
+            gAgentPendingLoadScreenSlot = -1;
+        }
+
+        ~AgentLoadScreenGuard()
+        {
+            gAgentLoadScreenActive = false;
+            gAgentPendingLoadScreenSlot = -1;
+        }
+    } agentLoadScreenGuard;
+
     int rc = -1;
     int doubleClickSlot = -1;
     while (rc == -1) {
@@ -982,6 +998,13 @@ int LoadGame(int mode)
         int keyCode = get_input();
         bool selectionChanged = false;
         int scrollDirection = 0;
+
+        if (gAgentPendingLoadScreenSlot >= 0 && gAgentPendingLoadScreenSlot < 10) {
+            slot_cursor = gAgentPendingLoadScreenSlot;
+            gAgentPendingLoadScreenSlot = -1;
+            keyCode = 500;
+            doubleClickSlot = -1;
+        }
 
         convertMouseWheelToArrowKey(&keyCode);
 
@@ -1671,6 +1694,25 @@ int agentLoadSaveQuickLoad()
         slot_cursor = 0;
     }
     return agentLoadSaveLoadFromSlot(slot_cursor);
+}
+
+bool agentLoadSaveIsLoadScreenActive()
+{
+    return gAgentLoadScreenActive;
+}
+
+int agentLoadSaveLoadSlotFromLoadScreen(int slot)
+{
+    if (!gAgentLoadScreenActive || slot < 0 || slot >= 10) {
+        return -1;
+    }
+
+    if (LSstatus[slot] != SLOT_STATE_OCCUPIED) {
+        return -1;
+    }
+
+    gAgentPendingLoadScreenSlot = slot;
+    return 0;
 }
 
 // 0x46FCCC

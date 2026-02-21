@@ -33,6 +33,8 @@ int agentLoadSaveSaveToSlot(int slot, const char* description);
 int agentLoadSaveLoadFromSlot(int slot);
 int agentLoadSaveQuickSave(const char* description);
 int agentLoadSaveQuickLoad();
+bool agentLoadSaveIsLoadScreenActive();
+int agentLoadSaveLoadSlotFromLoadScreen(int slot);
 
 } // namespace fallout
 
