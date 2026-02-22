@@ -235,6 +235,39 @@ static CacheEntry* grph_key[ELEVATOR_FRM_COUNT];
 // 0x56ED78
 static unsigned char* grphbmp[ELEVATOR_FRM_COUNT];
 
+// 0x437E70
+int elevator_get_destination(int elevator, int level, int* mapPtr, int* elevationPtr, int* tilePtr)
+{
+    if (mapPtr == nullptr || elevationPtr == nullptr || tilePtr == nullptr) {
+        return -1;
+    }
+
+    if (elevator < 0 || elevator >= ELEVATOR_COUNT) {
+        return -1;
+    }
+
+    if (level < 0 || level >= btncnt[elevator] || level >= ELEVATOR_LEVEL_MAX) {
+        return -1;
+    }
+
+    const ElevatorDescription* description = &(retvals[elevator][level]);
+    *mapPtr = description->map;
+    *elevationPtr = description->elevation;
+    *tilePtr = description->tile;
+
+    return 0;
+}
+
+// 0x437E7C
+int elevator_get_level_count(int elevator)
+{
+    if (elevator < 0 || elevator >= ELEVATOR_COUNT) {
+        return -1;
+    }
+
+    return btncnt[elevator];
+}
+
 // Presents elevator dialog for player to pick a desired level.
 //
 // 0x437E8C

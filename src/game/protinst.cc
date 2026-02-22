@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "game/anim.h"
+#include "game/art.h"
 #include "game/combat.h"
 #include "game/critter.h"
 #include "game/display.h"
@@ -1207,6 +1208,19 @@ static int sync_door_state_flags(Object* a1, Object* a2)
 {
     if ((a1->data.scenery.door.openFlags & 0x01) != 0) {
         a1->flags |= OBJECT_OPEN_DOOR;
+
+        // Keep visual state open if door logic marks it as open.
+        if (a1->frame == 0) {
+            CacheEntry* artHandle;
+            Art* art = art_ptr_lock(a1->fid, &artHandle);
+            if (art != NULL) {
+                int frameCount = art_frame_max_frame(art);
+                art_ptr_unlock(artHandle);
+                if (frameCount > 1) {
+                    obj_set_frame(a1, frameCount - 1, NULL);
+                }
+            }
+        }
     } else {
         a1->flags &= ~OBJECT_OPEN_DOOR;
     }
@@ -1222,6 +1236,19 @@ static int check_door_state(Object* a1, Object* a2)
 {
     if ((a1->data.scenery.door.openFlags & 0x01) != 0) {
         a1->flags |= OBJECT_OPEN_DOOR;
+
+        // Keep visual state open if door logic marks it as open.
+        if (a1->frame == 0) {
+            CacheEntry* artHandle;
+            Art* art = art_ptr_lock(a1->fid, &artHandle);
+            if (art != NULL) {
+                int frameCount = art_frame_max_frame(art);
+                art_ptr_unlock(artHandle);
+                if (frameCount > 1) {
+                    obj_set_frame(a1, frameCount - 1, NULL);
+                }
+            }
+        }
     } else {
         a1->flags &= ~OBJECT_OPEN_DOOR;
     }

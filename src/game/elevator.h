@@ -20,6 +20,8 @@ typedef enum Elevator {
 } Elevator;
 
 int elevator_select(int elevator, int* mapPtr, int* elevationPtr, int* tilePtr);
+int elevator_get_destination(int elevator, int level, int* mapPtr, int* elevationPtr, int* tilePtr);
+int elevator_get_level_count(int elevator);
 
 } // namespace fallout
 
