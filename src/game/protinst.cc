@@ -38,6 +38,7 @@ static int protinst_default_use_item(Object* a1, Object* a2, Object* item);
 static int rebuild_all_light();
 static int set_door_state_open(Object* a1, Object* a2);
 static int set_door_state_closed(Object* a1, Object* a2);
+static int sync_door_state_flags(Object* a1, Object* a2);
 static int check_door_state(Object* a1, Object* a2);
 
 // 0x489F60
@@ -1196,86 +1197,39 @@ static int set_door_state_open(Object* a1, Object* a2)
 // 0x48B80C
 static int set_door_state_closed(Object* a1, Object* a2)
 {
-    a1->data.scenery.door.openFlags &= ~0x01;
+    // Doors stay open - closing is handled exclusively by obj_use_door
+    // when the player explicitly uses an open door to close it.
+    return 0;
+}
+
+// Keep blocking/light flags in sync with door openFlags.
+static int sync_door_state_flags(Object* a1, Object* a2)
+{
+    if ((a1->data.scenery.door.openFlags & 0x01) != 0) {
+        a1->flags |= OBJECT_OPEN_DOOR;
+    } else {
+        a1->flags &= ~OBJECT_OPEN_DOOR;
+    }
+
+    // NOTE: Uninline.
+    rebuild_all_light();
+
     return 0;
 }
 
 // 0x48B81C
 static int check_door_state(Object* a1, Object* a2)
 {
-    if ((a1->data.scenery.door.openFlags & 0x01) == 0) {
-        a1->flags &= ~OBJECT_OPEN_DOOR;
-
-        // NOTE: Uninline.
-        rebuild_all_light();
-
-        if (a1->frame == 0) {
-            return 0;
-        }
-
-        CacheEntry* artHandle;
-        Art* art = art_ptr_lock(a1->fid, &artHandle);
-        if (art == NULL) {
-            return -1;
-        }
-
-        Rect dirty;
-        Rect temp;
-
-        obj_bound(a1, &dirty);
-
-        for (int frame = a1->frame - 1; frame >= 0; frame--) {
-            int x;
-            int y;
-            art_frame_hot(art, frame, a1->rotation, &x, &y);
-            obj_offset(a1, -x, -y, &temp);
-        }
-
-        obj_set_frame(a1, 0, &temp);
-        rect_min_bound(&dirty, &temp, &dirty);
-
-        tile_refresh_rect(&dirty, map_elevation);
-
-        art_ptr_unlock(artHandle);
-        return 0;
-    } else {
+    if ((a1->data.scenery.door.openFlags & 0x01) != 0) {
         a1->flags |= OBJECT_OPEN_DOOR;
-
-        // NOTE: Uninline.
-        rebuild_all_light();
-
-        CacheEntry* artHandle;
-        Art* art = art_ptr_lock(a1->fid, &artHandle);
-        if (art == NULL) {
-            return -1;
-        }
-
-        int frameCount = art_frame_max_frame(art);
-        if (a1->frame == frameCount - 1) {
-            art_ptr_unlock(artHandle);
-            return 0;
-        }
-
-        Rect dirty;
-        Rect temp;
-
-        obj_bound(a1, &dirty);
-
-        for (int frame = a1->frame + 1; frame < frameCount; frame++) {
-            int x;
-            int y;
-            art_frame_hot(art, frame, a1->rotation, &x, &y);
-            obj_offset(a1, x, y, &temp);
-        }
-
-        obj_set_frame(a1, frameCount - 1, &temp);
-        rect_min_bound(&dirty, &temp, &dirty);
-
-        tile_refresh_rect(&dirty, map_elevation);
-
-        art_ptr_unlock(artHandle);
-        return 0;
+    } else {
+        a1->flags &= ~OBJECT_OPEN_DOOR;
     }
+
+    // NOTE: Uninline.
+    rebuild_all_light();
+
+    return 0;
 }
 
 // 0x48B9C0
@@ -1302,50 +1256,73 @@ int obj_use_door(Object* a1, Object* a2, int a3)
     }
 
     if (!scriptOverrides) {
-        int start;
-        int end;
-        int step;
-        if (a2->frame != 0) {
-            start = 1;
-            end = (a3 == 0) - 1;
-            step = -1;
-        } else {
-            if (a2->data.scenery.door.openFlags & 0x01) {
+        if (a3 == 0) {
+            if (a2->frame == 0 && (a2->data.scenery.door.openFlags & 0x01) != 0) {
                 return -1;
             }
 
-            start = 0;
-            end = (a3 != 0) + 1;
-            step = 1;
-        }
+            register_begin(ANIMATION_REQUEST_RESERVED);
 
-        register_begin(ANIMATION_REQUEST_RESERVED);
-
-        for (int i = start; i != end; i += step) {
-            if (i != 0) {
-                if (a3 == 0) {
-                    register_object_call(a2, a2, (AnimationCallback*)set_door_state_closed, -1);
-                }
-
+            if (a2->frame != 0) {
+                register_object_call(a2, a2, (AnimationCallback*)set_door_state_closed, -1);
                 const char* sfx = gsnd_build_open_sfx_name(a2, SCENERY_SOUND_EFFECT_CLOSED);
                 register_object_play_sfx(a2, sfx, -1);
-
                 register_object_animate_reverse(a2, ANIM_STAND, 0);
             } else {
-                if (a3 == 0) {
-                    register_object_call(a2, a2, (AnimationCallback*)set_door_state_open, -1);
-                }
-
+                register_object_call(a2, a2, (AnimationCallback*)set_door_state_open, -1);
                 const char* sfx = gsnd_build_open_sfx_name(a2, SCENERY_SOUND_EFFECT_OPEN);
                 register_object_play_sfx(a2, sfx, -1);
-
                 register_object_animate(a2, ANIM_STAND, 0);
             }
+
+            register_object_must_call(a2, a2, (AnimationCallback*)sync_door_state_flags, -1);
+            register_end();
+        } else {
+            int start;
+            int end;
+            int step;
+            if (a2->frame != 0) {
+                start = 1;
+                end = (a3 == 0) - 1;
+                step = -1;
+            } else {
+                if (a2->data.scenery.door.openFlags & 0x01) {
+                    return -1;
+                }
+
+                start = 0;
+                end = (a3 != 0) + 1;
+                step = 1;
+            }
+
+            register_begin(ANIMATION_REQUEST_RESERVED);
+
+            for (int i = start; i != end; i += step) {
+                if (i != 0) {
+                    if (a3 == 0) {
+                        register_object_call(a2, a2, (AnimationCallback*)set_door_state_closed, -1);
+                    }
+
+                    const char* sfx = gsnd_build_open_sfx_name(a2, SCENERY_SOUND_EFFECT_CLOSED);
+                    register_object_play_sfx(a2, sfx, -1);
+
+                    register_object_animate_reverse(a2, ANIM_STAND, 0);
+                } else {
+                    if (a3 == 0) {
+                        register_object_call(a2, a2, (AnimationCallback*)set_door_state_open, -1);
+                    }
+
+                    const char* sfx = gsnd_build_open_sfx_name(a2, SCENERY_SOUND_EFFECT_OPEN);
+                    register_object_play_sfx(a2, sfx, -1);
+
+                    register_object_animate(a2, ANIM_STAND, 0);
+                }
+            }
+
+            register_object_must_call(a2, a2, (AnimationCallback*)check_door_state, -1);
+
+            register_end();
         }
-
-        register_object_must_call(a2, a2, (AnimationCallback*)check_door_state, -1);
-
-        register_end();
     }
 
     return 0;
@@ -1630,26 +1607,21 @@ int obj_toggle_open(Object* obj)
         return -1;
     }
 
+    // Only open doors, never close them via toggle
+    // (obj_use_door handles closing when player explicitly uses an open door)
+    if (obj->frame != 0) {
+        // Door is already open, do nothing
+        return 0;
+    }
+
     obj_unjam_lock(obj);
 
     register_begin(ANIMATION_REQUEST_RESERVED);
-
-    if (obj->frame != 0) {
-        register_object_must_call(obj, obj, (AnimationCallback*)set_door_state_closed, -1);
-
-        const char* sfx = gsnd_build_open_sfx_name(obj, SCENERY_SOUND_EFFECT_CLOSED);
-        register_object_play_sfx(obj, sfx, -1);
-
-        register_object_animate_reverse(obj, ANIM_STAND, 0);
-    } else {
-        register_object_must_call(obj, obj, (AnimationCallback*)set_door_state_open, -1);
-
-        const char* sfx = gsnd_build_open_sfx_name(obj, SCENERY_SOUND_EFFECT_OPEN);
-        register_object_play_sfx(obj, sfx, -1);
-        register_object_animate(obj, ANIM_STAND, 0);
-    }
-
-    register_object_must_call(obj, obj, (AnimationCallback*)check_door_state, -1);
+    register_object_must_call(obj, obj, (AnimationCallback*)set_door_state_open, -1);
+    const char* sfx = gsnd_build_open_sfx_name(obj, SCENERY_SOUND_EFFECT_OPEN);
+    register_object_play_sfx(obj, sfx, -1);
+    register_object_animate(obj, ANIM_STAND, 0);
+    register_object_must_call(obj, obj, (AnimationCallback*)sync_door_state_flags, -1);
 
     register_end();
 
@@ -1669,6 +1641,14 @@ int obj_open(Object* obj)
 // 0x48C0C8
 int obj_close(Object* obj)
 {
+    // Doors stay open - only the player (via use_object/obj_use_door) can close them.
+    if (PID_TYPE(obj->pid) == OBJ_TYPE_SCENERY) {
+        Proto* proto;
+        if (proto_ptr(obj->pid, &proto) != -1 && proto->scenery.type == SCENERY_TYPE_DOOR) {
+            return 0;
+        }
+    }
+
     if (obj->frame != 0) {
         obj_toggle_open(obj);
     }

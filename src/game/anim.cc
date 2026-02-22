@@ -2627,7 +2627,10 @@ static void object_move(int index)
                 }
                 v10 = -1;
             } else {
-                obj_use_door(object, v12, 0);
+                // Only open closed doors; do not toggle open doors closed.
+                if (v12->frame == 0) {
+                    obj_use_door(object, v12, 0);
+                }
             }
         }
 
