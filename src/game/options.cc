@@ -354,6 +354,10 @@ static int violence_level;
 // 0x661F1C
 static int game_difficulty;
 
+// Tracks whether one of the gameplay options overlays is currently open.
+static bool options_menu_active;
+static bool pause_window_active;
+
 // 0x505D68
 static PreferenceDescription btndat[PREF_COUNT] = {
     { 3, 0, 76, 71, 0, 0, { 203, 204, 205, 0 }, 0, GAME_CONFIG_GAME_DIFFICULTY_KEY, 0, 0, &game_difficulty },
@@ -377,6 +381,11 @@ static PreferenceDescription btndat[PREF_COUNT] = {
     { 2, 0, 374, 451, 0, 0, { 207, 218, 0, 0 }, 0, GAME_CONFIG_MOUSE_SENSITIVITY_KEY, 1.0, 2.5, NULL },
 };
 
+bool options_menu_is_active()
+{
+    return options_menu_active || pause_window_active;
+}
+
 // 0x481328
 int do_options()
 {
@@ -384,6 +393,8 @@ int do_options()
         debug_printf("\nOPTION MENU: Error loading option dialog data!\n");
         return -1;
     }
+
+    options_menu_active = true;
 
     int rc = -1;
     while (rc == -1) {
@@ -460,6 +471,7 @@ int do_options()
     }
 
     OptnEnd();
+    options_menu_active = false;
 
     return rc;
 }
@@ -747,6 +759,8 @@ int PauseWindow(bool is_world_map)
 
     win_draw(window);
 
+    pause_window_active = true;
+
     bool done = false;
     while (!done) {
         sharedFpsLimiter.mark();
@@ -778,6 +792,8 @@ int PauseWindow(bool is_world_map)
     if (!is_world_map) {
         tile_refresh_display();
     }
+
+    pause_window_active = false;
 
     win_delete(window);
 

@@ -830,13 +830,7 @@ int scripts_check_state()
                     obj_set_rotation(obj_dude, ROTATION_SE, 0);
                     obj_attempt_placement(obj_dude, tile, elevation, 0);
 
-                    if (elevatorDoors != NULL) {
-                        obj_set_frame(elevatorDoors, 0, NULL);
-                        obj_move_to_tile(elevatorDoors, elevatorDoors->tile, elevatorDoors->elevation, NULL);
-                        elevatorDoors->flags &= ~OBJECT_OPEN_DOOR;
-                        elevatorDoors->data.scenery.door.openFlags &= ~0x01;
-                        obj_rebuild_all_light();
-                    } else {
+                    if (elevatorDoors == NULL) {
                         debug_printf("\nWarning: Elevator: Couldn't find old elevator doors!");
                     }
                 }
@@ -852,13 +846,7 @@ int scripts_check_state()
                     elevatorDoors = obj_find_next_at();
                 }
 
-                if (elevatorDoors != NULL) {
-                    obj_set_frame(elevatorDoors, 0, NULL);
-                    obj_move_to_tile(elevatorDoors, elevatorDoors->tile, elevatorDoors->elevation, NULL);
-                    elevatorDoors->flags &= ~OBJECT_OPEN_DOOR;
-                    elevatorDoors->data.scenery.door.openFlags &= ~0x01;
-                    obj_rebuild_all_light();
-                } else {
+                if (elevatorDoors == NULL) {
                     debug_printf("\nWarning: Elevator: Couldn't find old elevator doors!");
                 }
 
@@ -935,13 +923,7 @@ int scripts_check_state_in_combat()
                     obj_set_rotation(obj_dude, ROTATION_SE, 0);
                     obj_attempt_placement(obj_dude, tile, elevation, 0);
 
-                    if (elevatorDoors != NULL) {
-                        obj_set_frame(elevatorDoors, 0, NULL);
-                        obj_move_to_tile(elevatorDoors, elevatorDoors->tile, elevatorDoors->elevation, NULL);
-                        elevatorDoors->flags &= ~OBJECT_OPEN_DOOR;
-                        elevatorDoors->data.scenery.door.openFlags &= ~0x01;
-                        obj_rebuild_all_light();
-                    } else {
+                    if (elevatorDoors == NULL) {
                         debug_printf("\nWarning: Elevator: Couldn't find old elevator doors!");
                     }
                 }

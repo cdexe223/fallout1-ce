@@ -7,6 +7,7 @@ namespace fallout {
 
 int do_options();
 int PauseWindow(bool is_world_map);
+bool options_menu_is_active();
 int init_options_menu();
 int save_options(DB_FILE* stream);
 int load_options(DB_FILE* stream);

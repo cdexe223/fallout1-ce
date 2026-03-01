@@ -1696,6 +1696,14 @@ int agentLoadSaveQuickLoad()
     return agentLoadSaveLoadFromSlot(slot_cursor);
 }
 
+int agentLoadSaveGetCurrentSlot()
+{
+    if (slot_cursor < 0 || slot_cursor >= 10) {
+        return 0;
+    }
+    return slot_cursor;
+}
+
 bool agentLoadSaveIsLoadScreenActive()
 {
     return gAgentLoadScreenActive;

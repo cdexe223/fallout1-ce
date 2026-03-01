@@ -1063,6 +1063,14 @@ static void op_animate_stand_reverse_obj(Program* program)
     }
 
     if (!isInCombat()) {
+        // Skip reverse animation on doors - doors stay open.
+        if (PID_TYPE(object->pid) == OBJ_TYPE_SCENERY) {
+            Proto* proto;
+            if (proto_ptr(object->pid, &proto) != -1 && proto->scenery.type == SCENERY_TYPE_DOOR) {
+                return;
+            }
+        }
+
         register_begin(ANIMATION_REQUEST_UNRESERVED);
         register_object_animate_reverse(object, ANIM_STAND, 0);
         register_end();
@@ -2758,6 +2766,15 @@ static void op_anim(Program* program)
                 combatData->results &= DAM_KNOCKED_DOWN;
             }
         } else {
+            // Skip reverse animation on doors - doors stay open.
+            if (PID_TYPE(obj->pid) == OBJ_TYPE_SCENERY) {
+                Proto* proto;
+                if (proto_ptr(obj->pid, &proto) != -1 && proto->scenery.type == SCENERY_TYPE_DOOR) {
+                    register_end();
+                    return;
+                }
+            }
+
             int fid = art_id(FID_TYPE(obj->fid), obj->fid & 0xFFF, anim, (obj->fid & 0xF000) >> 12, (obj->fid & 0x70000000) >> 24);
             register_object_animate_reverse(obj, anim, 0);
 
@@ -2855,6 +2872,14 @@ static void op_reg_anim_animate_reverse(Program* program)
 
     if (!isInCombat()) {
         if (object != NULL) {
+            // Skip reverse animation on doors - doors stay open.
+            if (PID_TYPE(object->pid) == OBJ_TYPE_SCENERY) {
+                Proto* proto;
+                if (proto_ptr(object->pid, &proto) != -1 && proto->scenery.type == SCENERY_TYPE_DOOR) {
+                    return;
+                }
+            }
+
             register_object_animate_reverse(object, anim, delay);
         } else {
             dbg_error(program, "reg_anim_animate_reverse", SCRIPT_ERROR_OBJECT_IS_NULL);
